@@ -65,7 +65,7 @@ class dataset_obj(torch.utils.data.Dataset):
 #         self.data = torch.sparse.FloatTensor(torch.LongTensor(np.stack([self.data.row,self.data.col])), 
 #                                             torch.LongTensor(self.data.data), 
 #                                             torch.Size(self.data.shape))
-        self.labels = torch.FloatTensor(self.labels)
+        self.labels = torch.LongTensor(self.labels)
         
 
     def __len__(self):
@@ -85,16 +85,17 @@ def custom_collate_fn(batch):
     
     # https://gist.github.com/Tushar-N/dfca335e370a2bc3bc79876e6270099e
 
-    data = torch.nn.utils.rnn.pad_sequence([item[0] for item in batch])
+    data = torch.nn.utils.rnn.pad_sequence([item[0] for item in batch],batch_first=True)
     # default pads with 0. 
     # returns (max_seqlen, batch_size, d)
-    labels = torch.nn.utils.rnn.pad_sequence([item[1] for item in batch])
+    labels = torch.nn.utils.rnn.pad_sequence([item[1] for item in batch],batch_first=True)
     seqlen = [item[3] for item in batch]
+    indices = [item[2] for item in batch]
 
-    data = torch.nn.utils.rnn.pack_padded_sequence(data,seqlen,enforce_sorted=False)
-    labels = torch.nn.utils.rnn.pack_padded_sequence(labels,seqlen,enforce_sorted=False)
+#     data = torch.nn.utils.rnn.pack_padded_sequence(data,seqlen,enforce_sorted=False)
+#     labels = torch.nn.utils.rnn.pack_padded_sequence(labels,seqlen,enforce_sorted=False)
     # returns torch.nn.utils.rnn.PackedSequence, a named tuple (data, batch_sizes, sorted_indices, unsorted_indices)
-    return [data, labels]
+    return [data, labels, seqlen, indices]
 
 class BySequenceLengthSampler(torch.utils.data.sampler.Sampler):
     ''' 

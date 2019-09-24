@@ -11,6 +11,7 @@ import pickle
 import pdb
 
 import data as custom_data
+from sklearn.metrics import roc_auc_score
 
 
 #############################################################################################################
@@ -81,7 +82,7 @@ def learn_model(args,Net,HP_feature_list):
     train_loader = torch.utils.data.DataLoader(train_data,batch_size=args['batch_size'],shuffle=True, 
                                                collate_fn=custom_data.custom_collate_fn)
     test_data = custom_data.dataset_obj(args,'test')
-    test_loader = torch.utils.data.DataLoader(test_data,batch_size=args['batch_size'],shuffle=True,
+    test_loader = torch.utils.data.DataLoader(test_data,batch_size=args['batch_size'],shuffle=False,
                                              collate_fn=custom_data.custom_collate_fn)
 
     
@@ -106,8 +107,8 @@ def learn_model(args,Net,HP_feature_list):
         train(train_loader, model, args, optimizer)
 
 ### come back later and uncomment
-#         #Evaluate
-#         zdf, testloss = test(test_loader, model, args, 'test')  
+        #Evaluate
+        zdf, testloss = test(test_loader, model, args, 'test')  
 #         val_zdf, valloss = test(val_loader, model, args, 'val')
 #         _, trainloss = test(train_loader, model, args, 'train')
 
@@ -153,7 +154,7 @@ def learn_model(args,Net,HP_feature_list):
 
 def train(train_loader, model, args, optimizer):
     model.train()
-    for batch_idx, (data, target, idx) in enumerate(train_loader):
+    for batch_idx, (data, target, seqlen, indices) in enumerate(train_loader):
         
         if args['use_cuda']:
             data, target = data.cuda(), target.cuda()
@@ -165,63 +166,118 @@ def train(train_loader, model, args, optimizer):
         output = output.view(-1,args['num_classes'])
         target = target.flatten()
                              
-        output = output.view(target.shape)
+#         output = output.view(target.shape)
                 
         #loss = F.mse_loss(output,target)
-        loss = F.l1_loss(output,target)
+        #loss = F.l1_loss(output,target)
+        
+        #Create Mask
+        maxseqlen = max(seqlen)
+        mask = torch.arange(maxseqlen)[None, :]< torch.FloatTensor(seqlen)[:, None]
+        mask = mask.type(torch.FloatTensor).flatten()
+        
+        loss = torch.sum(F.cross_entropy(output,target,reduction='none')*mask.cuda())
         loss.backward()
         optimizer.step()
         
     return
 
 
+
 #NOTE: regardless of type of loss used in optimization, testloss is returning MSE loss. 
 def test(test_loader, model, args, dataset):
     model.eval()    
     
+    # AUROC caluclation
+    alllabels=np.empty(0)
+    alloutputs=np.empty(0)
+
+    for data, labels, seqlen, indices in test_loader:
+
+        if args['use_cuda']:
+            data, labels = data.cuda(), labels.cuda()
+        data, labels = Variable(data), Variable(labels)
+        outputs = F.softmax(model(data),dim=2)[:,:,1]
+        # likelihood of CDI positive, ranges from 0-1
+        # batch_size x max_seqlen x num_classes
+
+        #Create Mask
+        maxseqlen = max(seqlen)
+        mask = torch.arange(maxseqlen)[None, :]< torch.FloatTensor(seqlen)[:, None]
+        mask = mask.type(torch.FloatTensor)
+
+        #Take the max per admission with mask
+        with torch.no_grad():
+            outputs = torch.max(outputs*mask.cuda(),dim=1).values
+            labels = torch.max(labels,dim=1).values
+
+
+        if alllabels.shape[0]==0:
+            alllabels = labels.cpu().numpy()
+            alloutputs = outputs.cpu().numpy()
+        else:
+            alllabels = np.hstack([alllabels,labels.cpu().numpy()])
+            alloutputs = np.hstack([alloutputs,outputs.cpu().numpy()])
+
+    print(roc_auc_score(alllabels, alloutputs))
+
     df=pd.DataFrame()
     all_testloss={}
-    metadata=test_loader.dataset.data['metadata']
-    
-    for t in test_loader.dataset.T:
-        all_testloss[t]=0
-        
-    for data, full_target, idx in test_loader:
-        idx = idx.data.numpy()
-        
-        if args['use_cuda']:
-            data, full_target = data.cuda(), full_target.cuda()
-        data, full_target = Variable(data), Variable(full_target)
-        full_output = model(data)
-        
-        for ind, t in enumerate(test_loader.dataset.T):
-            
-            output = full_output[:,ind,:]
-            target = full_target[:,ind]                          
-            output = output.view(target.shape)
-        
-            # Sum up batch loss
-            all_testloss[t] += F.mse_loss(output, target, reduction='sum').item()
-
-            if args['use_cuda']:
-                output = output.cpu()
-                target = target.cpu()
-        
-            zdf = pd.DataFrame({'targets':list(target.data.numpy().flatten()),
-                                'output':list(output.data.numpy().flatten()),
-                               'season_title_id':metadata[idx,ind,0],
-                               'country_iso_code':metadata[idx,ind,1],
-                               'days_since_launch':metadata[idx,ind,2],
-                               'f28d_watch_pct':metadata[idx,ind,-1],
-                               'cume_watch_pct_for_day':metadata[idx,ind,-2]})
-            zdf['t']=[t]*zdf.shape[0]
-            df = df.append(zdf)
-
-    for t in test_loader.dataset.T:
-        all_testloss[t] /= test_loader.dataset.data['features'].shape[0]
-    
-    df['dataset'] = [dataset]*df.shape[0]
     return df, all_testloss
+
+
+
+
+
+
+
+# #NOTE: regardless of type of loss used in optimization, testloss is returning MSE loss. 
+# def test(test_loader, model, args, dataset):
+#     model.eval()    
+    
+#     df=pd.DataFrame()
+#     all_testloss={}
+#     metadata=test_loader.dataset.data['metadata']
+    
+#     for t in test_loader.dataset.T:
+#         all_testloss[t]=0
+        
+#     for data, full_target, idx in test_loader:
+#         idx = idx.data.numpy()
+        
+#         if args['use_cuda']:
+#             data, full_target = data.cuda(), full_target.cuda()
+#         data, full_target = Variable(data), Variable(full_target)
+#         full_output = model(data)
+        
+#         for ind, t in enumerate(test_loader.dataset.T):
+            
+#             output = full_output[:,ind,:]
+#             target = full_target[:,ind]                          
+#             output = output.view(target.shape)
+        
+#             # Sum up batch loss
+#             all_testloss[t] += F.mse_loss(output, target, reduction='sum').item()
+
+#             if args['use_cuda']:
+#                 output = output.cpu()
+#                 target = target.cpu()
+        
+#             zdf = pd.DataFrame({'targets':list(target.data.numpy().flatten()),
+#                                 'output':list(output.data.numpy().flatten()),
+#                                'season_title_id':metadata[idx,ind,0],
+#                                'country_iso_code':metadata[idx,ind,1],
+#                                'days_since_launch':metadata[idx,ind,2],
+#                                'f28d_watch_pct':metadata[idx,ind,-1],
+#                                'cume_watch_pct_for_day':metadata[idx,ind,-2]})
+#             zdf['t']=[t]*zdf.shape[0]
+#             df = df.append(zdf)
+
+#     for t in test_loader.dataset.T:
+#         all_testloss[t] /= test_loader.dataset.data['features'].shape[0]
+    
+#     df['dataset'] = [dataset]*df.shape[0]
+#     return df, all_testloss
 
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
