@@ -35,14 +35,12 @@ parser.add_argument('--cuda',type=int)
 parser.add_argument('--data_loc',type=str,default='/data4/jeeheh/ShadowPeriod/Data/Adult_fulldata_2_14_19_v16 - labs and meds fixed - Without Procedures BMI Fixed/',help='Location of data')
 parser.add_argument('--INSTANCE_KEYS',nargs='+',type=str,default=['season_title_id', 'country_iso_code', 'days_since_launch'])
 parser.add_argument('--num_classes',type=int,default=2)
-parser.add_argument('--time_min',type=int,default=-91,help='Determines data time range')
-parser.add_argument('--time_max',type=int,default=27,help='Determines data time range')
 parser.add_argument('--time_step',type=int,default=5,help='Determines which time steps are used to determine early stopping criteria')
 
-#Phantom Step: Adds in t=-91 for PostGL
-parser.add_argument('--phantom_step', dest='phantom_step', action='store_true')
-parser.add_argument('--no_phantom_step', dest='phantom_step', action='store_false')
-parser.set_defaults(phantom_step=True)
+# #Phantom Step: Adds in t=-91 for PostGL
+# parser.add_argument('--phantom_step', dest='phantom_step', action='store_true')
+# parser.add_argument('--no_phantom_step', dest='phantom_step', action='store_false')
+# parser.set_defaults(phantom_step=True)
 
 #Hyperparameters
 parser.add_argument('--epochs',type=int,default=30) 
@@ -103,18 +101,18 @@ args['save_code_list'] = save_code_list
 # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 #Format Data and Save
-trainx, trainy, trainkey, testx, testy, testkey = custom_data.format_data(args)
+trainx, trainy, trainkey, valx, valy, valkey, testx, testy, testkey = custom_data.format_data(args)
 trainkey.to_hdf(os.path.join(args['save_folder'],args['id'],'datakeys_temp.h5'),'train')
+valkey.to_hdf(os.path.join(args['save_folder'],args['id'],'datakeys_temp.h5'),'val')
 testkey.to_hdf(os.path.join(args['save_folder'],args['id'],'datakeys_temp.h5'),'test')
 
-for filename, var in [('trainx',trainx), ('testx',testx)]:
+for filename, var in [('trainx',trainx), ('valx',valx), ('testx',testx)]:
     scipy.sparse.save_npz(os.path.join(args['save_folder'],args['id'],'data'+filename+'_temp.npz'), var)
-    
-for filename, var in [('trainy',trainy),('testy',testy)]:
+
+for filename, var in [('trainy',trainy), ('valy',valy), ('testy',testy)]:
     np.save(os.path.join(args['save_folder'],args['id'],'data'+filename+'_temp.npy'),var)
 
 
-    
 # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 # Models and Experiments
 # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

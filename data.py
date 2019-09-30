@@ -24,18 +24,32 @@ def format_data(args):
     xtrain = xtrain[:,:len(featcols)]
     xtest = xtest[:,:len(featcols)]
 
+    #Split Train into Validation (80/20) - keep patients together
+    pid_train=trainref[:,refcols['PatientID']]
+    np.random.seed(10)
+    val_size = int(.2*len(np.unique(pid_train)))
+    pid_val = np.random.choice(np.unique(pid_train),size=val_size,replace=False)
+    # these are the same each time
+    val_key = pd.DataFrame({'pid':pid_train})
+    val_key['index'] = np.arange(val_key.shape[0])
+    val_key = val_key.merge(pd.DataFrame({'pid':pid_val}),how='left',on='pid',indicator=True)
+    val_key['val'] = val_key._merge=='both'
+
     #Sort by eid/day. Return key: DF with eid, seqlen, start_index
-    day_train=trainref[:,refcols['Day']]
-    day_test=testref[:,refcols['Day']]
-    eid_train=trainref[:,refcols['EncounterID']]
+    day_train=trainref[val_key.loc[val_key.val==False,'index'],refcols['Day']]
+    day_val=trainref[val_key.loc[val_key.val==True,'index'],refcols['Day']]
+    day_test=testref[:,refcols['Day']]    
+                       
+    eid_train =trainref[val_key.loc[val_key.val==False,'index'],refcols['EncounterID']]
+    eid_val =trainref[val_key.loc[val_key.val==True,'index'],refcols['EncounterID']]
     eid_test=testref[:,refcols['EncounterID']]
+                       
     xtest, ytest, keytest = sort_eid_day(xtest, ytest, eid_test, day_test)
+    xval, yval, keyval = sort_eid_day(xtrain[val_key.loc[val_key.val==True,'index'],:],
+                                 ytrain[val_key.loc[val_key.val==True,'index']], eid_val, day_val)
     xtrain, ytrain, keytrain = sort_eid_day(xtrain, ytrain, eid_train, day_train)
     
-    #Turn CSR -> COO
-#     xtrain = xtrain.tocoo()
-#     xtest = xtest.tocoo()
-    return xtrain, ytrain, keytrain, xtest, ytest, keytest
+    return xtrain, ytrain, keytrain, xval, yval, keyval, xtest, ytest, keytest
 
 def sort_eid_day(data, labels, eid, day):
     key = pd.DataFrame({'eid':eid, 'day':day})
@@ -62,9 +76,6 @@ class dataset_obj(torch.utils.data.Dataset):
         self.N = self.datakey.shape[0]
         self.d = self.data.shape[1]
         
-#         self.data = torch.sparse.FloatTensor(torch.LongTensor(np.stack([self.data.row,self.data.col])), 
-#                                             torch.LongTensor(self.data.data), 
-#                                             torch.Size(self.data.shape))
         self.labels = torch.LongTensor(self.labels)
         
 
@@ -92,72 +103,5 @@ def custom_collate_fn(batch):
     seqlen = [item[3] for item in batch]
     indices = [item[2] for item in batch]
 
-#     data = torch.nn.utils.rnn.pack_padded_sequence(data,seqlen,enforce_sorted=False)
-#     labels = torch.nn.utils.rnn.pack_padded_sequence(labels,seqlen,enforce_sorted=False)
-    # returns torch.nn.utils.rnn.PackedSequence, a named tuple (data, batch_sizes, sorted_indices, unsorted_indices)
-    return [data, labels, seqlen, indices]
-
-class BySequenceLengthSampler(torch.utils.data.sampler.Sampler):
-    ''' 
-    Batch Sampler: https://gist.github.com/TrentBrick/bac21af244e7c772dc8651ab9c58328c
-    Must provide bucket boundaries for data
-        eg: bb = [50, 100, 125, 150, 175, 200, 250, 300]
-    Groups samples into buckets by sequence length
-    Shuffles them within bucketts
-    '''
-
-    def __init__(self, data_source, bucket_boundaries, batch_size=64,):
-        #Determine length of each sample
-        ind_n_len = []
-        for i, p in enumerate(data_source):
-            ind_n_len.append( (i, p.shape[0]) )
-        self.ind_n_len = ind_n_len
-        self.bucket_boundaries = bucket_boundaries
-        self.batch_size = batch_size
-        
-        
-    def __iter__(self):
-        data_buckets = dict()
-        # Assign each sample to a bucket
-        for p, seq_len in self.ind_n_len:
-            pid = self.element_to_bucket_id(p,seq_len)
-            if pid in data_buckets.keys():
-                data_buckets[pid].append(p)
-            else:
-                data_buckets[pid] = [p]
-
-        for k in data_buckets.keys():
-
-            data_buckets[k] = np.asarray(data_buckets[k])
-
-        # Shuffle the data in these buckets
-        iter_list = []
-        for k in data_buckets.keys():
-            np.random.shuffle(data_buckets[k])
-            iter_list += (np.array_split(data_buckets[k]
-                           , int(data_buckets[k].shape[0]/self.batch_size)))
-        shuffle(iter_list) # shuffle all the batches so they arent ordered by bucket
-        # size
-        for i in iter_list: 
-            yield i.tolist() # as it was stored in an array
-    
-    def __len__(self):
-        return len(self.data_source)
-    
-    def element_to_bucket_id(self, x, seq_length):
-        boundaries = list(self.bucket_boundaries)
-        buckets_min = [np.iinfo(np.int32).min] + boundaries
-        buckets_max = boundaries + [np.iinfo(np.int32).max]
-        conditions_c = np.logical_and(
-          np.less_equal(buckets_min, seq_length),
-          np.less(seq_length, buckets_max))
-        bucket_id = np.min(np.where(conditions_c))
-        return bucket_id
-
-
-    
-    
-    
-    
-    
+    return [data, labels, seqlen, indices]    
 
