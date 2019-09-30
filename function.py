@@ -180,6 +180,8 @@ def train(train_loader, model, args, optimizer):
         loss.backward()
         optimizer.step()
         
+        raise ValueError('heyyyy')
+        
     return
 
 

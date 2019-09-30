@@ -27,8 +27,9 @@ save_code_list = ['main.py','data.py','function.py','model.py']
 
 parser=argparse.ArgumentParser()
 
-parser.add_argument('--id', type=str, default='NEED',help='Determines save name')
-parser.add_argument('--model',type=str, default='NEED',help='Determines which model is used')
+parser.add_argument('--id', type=str,help='Determines save name')
+parser.add_argument('--model',type=str,help='Determines which model is used')
+parser.add_argument('--cuda',type=int)
 
 #Data
 parser.add_argument('--data_loc',type=str,default='/data4/jeeheh/ShadowPeriod/Data/Adult_fulldata_2_14_19_v16 - labs and meds fixed - Without Procedures BMI Fixed/',help='Location of data')
@@ -50,19 +51,21 @@ parser.add_argument('--budget',type=int,default=30)
 args=parser.parse_args()
 args=vars(args)
 
-#Check for GPUs
-if torch.cuda.device_count()>0:
-    args['use_cuda']=True
-else: args['use_cuda']=False
-
 #Prompt for missing args
 for x in args.keys():
-    if (args[x]=='NEED'):
+    if args[x] is None:
         args[x]=input("What is the {} of this experiment? ".format(x))
         print('--{}: {}'.format(str(x),str(args[x])))
     else: 
         print("--{}: {}".format(str(x),str(args[x])))
         
+#Cuda
+args['cuda']=int(args['cuda'])
+args['use_cuda'] = torch.cuda.is_available()
+if args['use_cuda']:
+    torch.cuda.set_device(args['cuda'])
+    print('Run on cuda: {}'.format(torch.cuda.current_device()))
+
 # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 # Save Settings/ Create experiment output folder
 # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
