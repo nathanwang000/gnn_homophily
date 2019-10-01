@@ -87,7 +87,7 @@ class dataset_obj(torch.utils.data.Dataset):
         seqlen = self.datakey.iloc[idx,1]
         x = csr_matrix.reshape(self.data[start_index:start_index+seqlen,:],(seqlen,self.d))
         y = self.labels[start_index:start_index+seqlen]
-        return torch.FloatTensor(x.todense()), y, idx, seqlen
+        return torch.FloatTensor(x.todense()).cuda(), torch.LongTensor(y).cuda(), idx, seqlen
 
     
 def custom_collate_fn(batch):
