@@ -33,9 +33,8 @@ parser.add_argument('--cuda',type=int)
 
 #Data
 parser.add_argument('--data_loc',type=str,default='/data4/jeeheh/ShadowPeriod/Data/Adult_fulldata_2_14_19_v16 - labs and meds fixed - Without Procedures BMI Fixed/',help='Location of data')
-parser.add_argument('--INSTANCE_KEYS',nargs='+',type=str,default=['season_title_id', 'country_iso_code', 'days_since_launch'])
+# parser.add_argument('--INSTANCE_KEYS',nargs='+',type=str,default=['season_title_id', 'country_iso_code', 'days_since_launch'])
 parser.add_argument('--num_classes',type=int,default=2)
-parser.add_argument('--time_step',type=int,default=5,help='Determines which time steps are used to determine early stopping criteria')
 
 # #Phantom Step: Adds in t=-91 for PostGL
 # parser.add_argument('--phantom_step', dest='phantom_step', action='store_true')
@@ -135,6 +134,6 @@ with open(os.path.join(args['save_folder'],args['id'],'args.pkl'), 'wb') as f:
     # This will overwrite existing text. This does not append.
     
 #Delete Data files
-# for filename in ['datakeys_temp.h5','datatrainx_temp.npz','datatrainy_temp.npy'
-#                  ,'datatestx_temp.npz','datatesty_temp.npy']:
-#     os.remove(os.path.join(args['save_folder'],args['id'],filename))
+for filename in ['datakeys_temp.h5','datatrainx_temp.npz','datatrainy_temp.npy'
+                 ,'datatestx_temp.npz','datatesty_temp.npy']:
+    os.remove(os.path.join(args['save_folder'],args['id'],filename))

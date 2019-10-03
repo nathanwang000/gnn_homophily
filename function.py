@@ -44,7 +44,8 @@ def HPsearch(args,Net):
         elif args['model']=='pytorchLSTM':
             args['batch_size'] = int(np.random.choice([10, 25, 50, 75]))
             args['l2'] = np.random.choice([0.001, 0.01, 0.1])
-            args['hidden_size'] = int(np.random.choice([100,300,600,900])) 
+#             args['hidden_size'] = int(np.random.choice([100,300,600,900])) 
+            args['hidden_size'] = int(np.random.choice([600,900,1200,1500]))
             args['depth'] = 1
                     
         #Learn Model
@@ -86,7 +87,8 @@ def learn_model(args,Net,HP_feature_list):
         model.cuda()
 
     #Epochs
-    earlystop = []
+#     earlystop = []
+    patience=11
     best_val_auc = None
     for epoch in range(1, args['epochs']+1):
         print('epoch: {}'.format(epoch))
@@ -121,12 +123,16 @@ def learn_model(args,Net,HP_feature_list):
             best_val_zdf = val_zdf
             torch.save(model.state_dict(), os.path.join(args['save_folder'],
                                         args['id'],'model'+str(args['randominit'])+'.pth'))
+            patience = 10
+        else: patience = patience -1 
 
         #Early Stopping
-        if len(earlystop)>5:
-            if abs(earlystop.pop(0)-valauc)<.0001:
-                break
-        earlystop.append(valauc)
+        if patience==0:
+            break
+#         if len(earlystop)>5:
+#             if abs(earlystop.pop(0)-valauc)<.0001:
+#                 break
+#         earlystop.append(valauc)
             
     #Prepare Pred DF    
     pred_df = pred_df.append(best_zdf)
@@ -152,28 +158,47 @@ def train(train_loader, model, args, optimizer):
         optimizer.zero_grad()  
         output = model(data)
                 
-        output = output.view(-1,args['num_classes'])
-        target = target.flatten()
-                             
-        #Create Mask
-        maxseqlen = max(seqlen)
-        mask = torch.arange(maxseqlen)[None, :]< torch.FloatTensor(seqlen)[:, None]
-        mask = mask.type(torch.FloatTensor).flatten()
-        
-        loss = torch.sum(F.cross_entropy(output,target,reduction='none')*mask.cuda())
+        loss = loss_opt(args,output,target,seqlen)
         loss.backward()
         optimizer.step()
             
     return
 
+# Target Replication
+# def loss_opt(args, output, target, seqlen):
+#     output = output.view(-1,args['num_classes'])
+#     target = target.flatten()
 
+#     maxseqlen = max(seqlen)
+#     mask = torch.arange(maxseqlen)[None, :]< torch.FloatTensor(seqlen)[:, None]
+#     mask = mask.type(torch.FloatTensor).flatten()        
+#     loss = torch.sum(F.cross_entropy(output,target,reduction='none')*mask.cuda())
+#     pdb.set_trace()
+#     return loss
+
+# Subsample 3
+def loss_opt(args, output, target, seqlen):
+    output = output.view(-1,args['num_classes'])
+    target = target.flatten()
+
+    maxseqlen = max(seqlen)    
+    subsmpl = [np.random.choice(x, size=3, replace=True) for x in seqlen]
+    # replace=True because of the case where seqlen = 2. This can happen if day of CDI is 4 in the training set.
+    
+    mask1 = torch.arange(maxseqlen)[None,:] == torch.FloatTensor([x[0] for x in subsmpl])[:,None]
+    mask2 = torch.arange(maxseqlen)[None,:] == torch.FloatTensor([x[1] for x in subsmpl])[:,None]
+    mask3 = torch.arange(maxseqlen)[None,:] == torch.FloatTensor([x[2] for x in subsmpl])[:,None]
+    
+    mask = torch.max(mask1.type(torch.FloatTensor),mask2.type(torch.FloatTensor))
+    mask = torch.max(mask, mask3.type(torch.FloatTensor)).flatten()
+    
+    loss = torch.sum(F.cross_entropy(output,target,reduction='none')*mask.cuda())
+    return loss
 
 def test(test_loader, model, args, dataset):
     
     model.eval()    
-    
-#     alllabels=np.empty(0)
-#     alloutputs=np.empty(0)
+
     total_loss=0
     total_sum=0
     df=pd.DataFrame()
@@ -184,15 +209,9 @@ def test(test_loader, model, args, dataset):
 #             data, labels = data.cuda(), labels.cuda()
         data, labels = Variable(data), Variable(labels)
         
-        #Calculate Loss (Target Replication Loss)
+        #Calculate Loss 
         output = model(data)
-        output = output.view(-1,args['num_classes'])
-        target = labels.flatten()
-                             
-        maxseqlen = max(seqlen)
-        mask = torch.arange(maxseqlen)[None, :]< torch.FloatTensor(seqlen)[:, None]
-        mask = mask.type(torch.FloatTensor).flatten()        
-        loss = torch.sum(F.cross_entropy(output,target,reduction='none')*mask.cuda())
+        loss = loss_opt(args, output, labels, seqlen)
         total_loss = total_loss + loss.detach().cpu().numpy()
         total_sum = total_sum + sum(seqlen)
 
@@ -214,14 +233,7 @@ def test(test_loader, model, args, dataset):
         df = df.append(pd.DataFrame({'labels':labels.cpu().numpy(),
                                     'outputs':outputs.cpu().numpy(),
                                     'eid':test_loader.dataset.datakey.loc[indices,'eid']}))
-#         if alllabels.shape[0]==0:
-#             alllabels = labels.cpu().numpy()
-#             alloutputs = outputs.cpu().numpy()
-#         else:
-#             alllabels = np.hstack([alllabels,labels.cpu().numpy()])
-#             alloutputs = np.hstack([alloutputs,outputs.cpu().numpy()])
-            
-#     auroc = roc_auc_score(alllabels, alloutputs)
+
     auroc = roc_auc_score(df.labels.values, df.outputs.values)
     print('--{} auc: {:.5f}'.format(dataset,auroc))
     print('--{} celoss: {:.5f}'.format(dataset,total_loss/total_sum))
