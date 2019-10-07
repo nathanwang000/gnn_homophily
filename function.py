@@ -10,6 +10,9 @@ import sys
 import pickle
 import pdb
 
+import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
+
 import data as custom_data
 from sklearn.metrics import roc_auc_score
 
@@ -92,6 +95,7 @@ def learn_model(args,Net,HP_feature_list):
     best_val_auc = None
     for epoch in range(1, args['epochs']+1):
         print('epoch: {}'.format(epoch))
+        args['current_epoch'] = epoch
 
         #Train
         #optimizer = torch.optim.SGD(model.parameters(),lr=args['learning_rate'], weight_decay=args['l2']) 
@@ -158,8 +162,10 @@ def train(train_loader, model, args, optimizer):
         optimizer.zero_grad()  
         output = model(data)
                 
-        loss = loss_opt(args,output,target,seqlen)
+        loss, _ = loss_opt(args,output,target,seqlen)
+#         print(output.requires_grad) # TRUE
         loss.backward()
+        plot_grad_flow(model.named_parameters(),args)
         optimizer.step()
             
     return
@@ -173,8 +179,7 @@ def train(train_loader, model, args, optimizer):
 #     mask = torch.arange(maxseqlen)[None, :]< torch.FloatTensor(seqlen)[:, None]
 #     mask = mask.type(torch.FloatTensor).flatten()        
 #     loss = torch.sum(F.cross_entropy(output,target,reduction='none')*mask.cuda())
-#     pdb.set_trace()
-#     return loss
+#     return loss, sum(seqlen)
 
 # Subsample 3
 def loss_opt(args, output, target, seqlen):
@@ -193,7 +198,35 @@ def loss_opt(args, output, target, seqlen):
     mask = torch.max(mask, mask3.type(torch.FloatTensor)).flatten()
     
     loss = torch.sum(F.cross_entropy(output,target,reduction='none')*mask.cuda())
-    return loss
+    return loss, 3*len(seqlen) #this is an approximation because there will be cases where it should be 2 and not 3.
+
+# Max Onwards
+# def loss_opt(args, output, target, seqlen):
+    
+#     # Padding Mask
+#     maxseqlen = max(seqlen)
+#     mask = torch.arange(maxseqlen)[None, :]< torch.FloatTensor(seqlen)[:, None]
+#     mask = mask.type(torch.FloatTensor)
+#     #print(mask.shape) # batch_size x maxseqlen
+
+#     # Max Onwards Mask
+#     #print(output.shape) # batch_size x maxseqlen x num_classes
+# #     with torch.no_grad():
+# #         _, argmax = torch.max(F.log_softmax(output,dim=2)[:,:,1]*mask.cuda(), dim=1)
+# #         argmax = argmax.cpu().numpy()
+#         #Hard coding ASSUMES classification task
+    
+#     _, argmax = torch.max(F.log_softmax(output.detach(),dim=2)[:,:,1]*mask.cuda(), dim=1)
+#     argmax = argmax.cpu().numpy()    
+#     maxmask = torch.arange(maxseqlen)[None, :]>= torch.FloatTensor(argmax)[:, None]
+        
+#     # Combine Masks
+#     mask = torch.min(mask, maxmask.type(torch.FloatTensor)).flatten()
+#     output = output.view(-1,args['num_classes'])
+#     target = target.flatten()
+    
+#     loss = torch.sum(F.cross_entropy(output,target,reduction='none')*mask.cuda())
+#     return loss, sum(mask).numpy()
 
 def test(test_loader, model, args, dataset):
     
@@ -211,9 +244,9 @@ def test(test_loader, model, args, dataset):
         
         #Calculate Loss 
         output = model(data)
-        loss = loss_opt(args, output, labels, seqlen)
+        loss, denom_add = loss_opt(args, output, labels, seqlen)
         total_loss = total_loss + loss.detach().cpu().numpy()
-        total_sum = total_sum + sum(seqlen)
+        total_sum = total_sum + denom_add
 
         #Calculate AUROC (Evaluation Metric: taking the max)
         outputs = F.softmax(model(data),dim=2)[:,:,1]
@@ -244,3 +277,33 @@ def test(test_loader, model, args, dataset):
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
+def plot_grad_flow(named_parameters, args):
+    #https://discuss.pytorch.org/t/check-gradient-flow-in-network/15063/10
+    '''Plots the gradients flowing through different layers in the net during training.
+    Can be used for checking for possible gradient vanishing / exploding problems.
+    
+    Usage: Plug this function in Trainer class after loss.backwards() as 
+    "plot_grad_flow(self.model.named_parameters())" to visualize the gradient flow'''
+    ave_grads = []
+    max_grads= []
+    layers = []
+    for n, p in named_parameters:
+        if(p.requires_grad) and ("bias" not in n):
+            layers.append(n)
+            ave_grads.append(p.grad.abs().mean())
+            max_grads.append(p.grad.abs().max())
+    plt.bar(np.arange(len(max_grads)), max_grads, alpha=0.1, lw=1, color="c")
+    plt.bar(np.arange(len(max_grads)), ave_grads, alpha=0.1, lw=1, color="b")
+    plt.hlines(0, 0, len(ave_grads)+1, lw=2, color="k" )
+    plt.xticks(range(0,len(ave_grads), 1), layers, rotation="vertical")
+    plt.xlim(left=0, right=len(ave_grads))
+#     plt.ylim(bottom = -0.001, top=0.02) # zoom in on the lower gradient regions
+    plt.xlabel("Layers")
+    plt.ylabel("average gradient")
+    plt.title("Gradient flow")
+    plt.grid(True)
+    plt.legend([Line2D([0], [0], color="c", lw=4),
+                Line2D([0], [0], color="b", lw=4),
+                Line2D([0], [0], color="k", lw=4)], ['max-gradient', 'mean-gradient', 'zero-gradient'])
+    plt.tight_layout()
+    plt.savefig(os.path.join(args['save_folder'],args['id'],'rinit'+str(args['randominit'])+'ep'+str(args['current_epoch'])+'.png'))

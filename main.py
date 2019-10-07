@@ -101,16 +101,16 @@ args['save_code_list'] = save_code_list
 
 #Format Data and Save
 
-trainx, trainy, trainkey, valx, valy, valkey, testx, testy, testkey = custom_data.format_data(args)
-trainkey.to_hdf(os.path.join(args['save_folder'],args['id'],'datakeys_temp.h5'),'train')
-valkey.to_hdf(os.path.join(args['save_folder'],args['id'],'datakeys_temp.h5'),'val')
-testkey.to_hdf(os.path.join(args['save_folder'],args['id'],'datakeys_temp.h5'),'test')
+# trainx, trainy, trainkey, valx, valy, valkey, testx, testy, testkey = custom_data.format_data(args)
+# trainkey.to_hdf(os.path.join(args['save_folder'],args['id'],'datakeys_temp.h5'),'train')
+# valkey.to_hdf(os.path.join(args['save_folder'],args['id'],'datakeys_temp.h5'),'val')
+# testkey.to_hdf(os.path.join(args['save_folder'],args['id'],'datakeys_temp.h5'),'test')
 
-for filename, var in [('trainx',trainx), ('valx',valx), ('testx',testx)]:
-    scipy.sparse.save_npz(os.path.join(args['save_folder'],args['id'],'data'+filename+'_temp.npz'), var)
+# for filename, var in [('trainx',trainx), ('valx',valx), ('testx',testx)]:
+#     scipy.sparse.save_npz(os.path.join(args['save_folder'],args['id'],'data'+filename+'_temp.npz'), var)
 
-for filename, var in [('trainy',trainy), ('valy',valy), ('testy',testy)]:
-    np.save(os.path.join(args['save_folder'],args['id'],'data'+filename+'_temp.npy'),var)
+# for filename, var in [('trainy',trainy), ('valy',valy), ('testy',testy)]:
+#     np.save(os.path.join(args['save_folder'],args['id'],'data'+filename+'_temp.npy'),var)
 
 
 # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
