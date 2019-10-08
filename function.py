@@ -165,40 +165,40 @@ def train(train_loader, model, args, optimizer):
         loss, _ = loss_opt(args,output,target,seqlen)
 #         print(output.requires_grad) # TRUE
         loss.backward()
-        plot_grad_flow(model.named_parameters(),args)
+#         plot_grad_flow(model.named_parameters(),args)
         optimizer.step()
             
     return
 
 # Target Replication
-# def loss_opt(args, output, target, seqlen):
-#     output = output.view(-1,args['num_classes'])
-#     target = target.flatten()
-
-#     maxseqlen = max(seqlen)
-#     mask = torch.arange(maxseqlen)[None, :]< torch.FloatTensor(seqlen)[:, None]
-#     mask = mask.type(torch.FloatTensor).flatten()        
-#     loss = torch.sum(F.cross_entropy(output,target,reduction='none')*mask.cuda())
-#     return loss, sum(seqlen)
-
-# Subsample 3
 def loss_opt(args, output, target, seqlen):
     output = output.view(-1,args['num_classes'])
     target = target.flatten()
 
-    maxseqlen = max(seqlen)    
-    subsmpl = [np.random.choice(x, size=3, replace=True) for x in seqlen]
-    # replace=True because of the case where seqlen = 2. This can happen if day of CDI is 4 in the training set.
-    
-    mask1 = torch.arange(maxseqlen)[None,:] == torch.FloatTensor([x[0] for x in subsmpl])[:,None]
-    mask2 = torch.arange(maxseqlen)[None,:] == torch.FloatTensor([x[1] for x in subsmpl])[:,None]
-    mask3 = torch.arange(maxseqlen)[None,:] == torch.FloatTensor([x[2] for x in subsmpl])[:,None]
-    
-    mask = torch.max(mask1.type(torch.FloatTensor),mask2.type(torch.FloatTensor))
-    mask = torch.max(mask, mask3.type(torch.FloatTensor)).flatten()
-    
+    maxseqlen = max(seqlen)
+    mask = torch.arange(maxseqlen)[None, :]< torch.FloatTensor(seqlen)[:, None]
+    mask = mask.type(torch.FloatTensor).flatten()        
     loss = torch.sum(F.cross_entropy(output,target,reduction='none')*mask.cuda())
-    return loss, 3*len(seqlen) #this is an approximation because there will be cases where it should be 2 and not 3.
+    return loss, sum(seqlen)
+
+# Subsample 3
+# def loss_opt(args, output, target, seqlen):
+#     output = output.view(-1,args['num_classes'])
+#     target = target.flatten()
+
+#     maxseqlen = max(seqlen)    
+#     subsmpl = [np.random.choice(x, size=3, replace=True) for x in seqlen]
+#     # replace=True because of the case where seqlen = 2. This can happen if day of CDI is 4 in the training set.
+    
+#     mask1 = torch.arange(maxseqlen)[None,:] == torch.FloatTensor([x[0] for x in subsmpl])[:,None]
+#     mask2 = torch.arange(maxseqlen)[None,:] == torch.FloatTensor([x[1] for x in subsmpl])[:,None]
+#     mask3 = torch.arange(maxseqlen)[None,:] == torch.FloatTensor([x[2] for x in subsmpl])[:,None]
+    
+#     mask = torch.max(mask1.type(torch.FloatTensor),mask2.type(torch.FloatTensor))
+#     mask = torch.max(mask, mask3.type(torch.FloatTensor)).flatten()
+    
+#     loss = torch.sum(F.cross_entropy(output,target,reduction='none')*mask.cuda())
+#     return loss, 3*len(seqlen) #this is an approximation because there will be cases where it should be 2 and not 3.
 
 # Max Onwards
 # def loss_opt(args, output, target, seqlen):

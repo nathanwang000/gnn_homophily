@@ -24,30 +24,27 @@ def format_data(args):
     xtrain = xtrain[:,:len(featcols)]
     xtest = xtest[:,:len(featcols)]
 
-    #Split Train into Validation (80/20) - keep patients together
-    pid_train=trainref[:,refcols['PatientID']]
-    np.random.seed(10)
-    val_size = int(.2*len(np.unique(pid_train)))
-    pid_val = np.random.choice(np.unique(pid_train),size=val_size,replace=False)
-    # these are the same each time
-    val_key = pd.DataFrame({'pid':pid_train})
+    #Split train and val based on admit year
+    val_key = pd.DataFrame({'AdmitDate':trainref[:,refcols['AdmitDate']]})
     val_key['index'] = np.arange(val_key.shape[0])
-    val_key = val_key.merge(pd.DataFrame({'pid':pid_val}),how='left',on='pid',indicator=True)
-    val_key['val'] = val_key._merge=='both'
+    val_key['val'] = val_key.AdmitDate.dt.year==2016
+    val_key['train'] = val_key.AdmitDate.dt.year==2017 
 
     #Sort by eid/day. Return key: DF with eid, seqlen, start_index
-    day_train=trainref[val_key.loc[val_key.val==False,'index'],refcols['Day']]
-    day_val=trainref[val_key.loc[val_key.val==True,'index'],refcols['Day']]
+    day_train=trainref[val_key.loc[val_key.train,'index'],refcols['Day']]
+    day_val=trainref[val_key.loc[val_key.val,'index'],refcols['Day']]
     day_test=testref[:,refcols['Day']]    
-                       
-    eid_train =trainref[val_key.loc[val_key.val==False,'index'],refcols['EncounterID']]
-    eid_val =trainref[val_key.loc[val_key.val==True,'index'],refcols['EncounterID']]
+
+    eid_train =trainref[val_key.loc[val_key.train,'index'],refcols['EncounterID']]
+    eid_val =trainref[val_key.loc[val_key.val,'index'],refcols['EncounterID']]
     eid_test=testref[:,refcols['EncounterID']]
-                       
+
     xtest, ytest, keytest = sort_eid_day(xtest, ytest, eid_test, day_test)
-    xval, yval, keyval = sort_eid_day(xtrain[val_key.loc[val_key.val==True,'index'],:],
-                                 ytrain[val_key.loc[val_key.val==True,'index']], eid_val, day_val)
-    xtrain, ytrain, keytrain = sort_eid_day(xtrain, ytrain, eid_train, day_train)
+    xval, yval, keyval = sort_eid_day(xtrain[val_key.loc[val_key.val,'index'],:],
+                                      ytrain[val_key.loc[val_key.val,'index']], eid_val, day_val)
+    xtrain, ytrain, keytrain = sort_eid_day(xtrain[val_key.loc[val_key.train,'index'],:], 
+                                            ytrain[val_key.loc[val_key.train,'index']], eid_train, day_train)
+
     
     return xtrain, ytrain, keytrain, xval, yval, keyval, xtest, ytest, keytest
 
