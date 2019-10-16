@@ -135,5 +135,6 @@ with open(os.path.join(args['save_folder'],args['id'],'args.pkl'), 'wb') as f:
     
 #Delete Data files
 for filename in ['datakeys_temp.h5','datatrainx_temp.npz','datatrainy_temp.npy'
-                 ,'datatestx_temp.npz','datatesty_temp.npy']:
+                 ,'datatestx_temp.npz','datatesty_temp.npy'
+                ,'datavalx_temp.npz','datavaly_temp.npy']:
     os.remove(os.path.join(args['save_folder'],args['id'],filename))

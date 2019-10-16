@@ -82,8 +82,7 @@ class pytorchLSTM(nn.Module):
         
         self.fc = nn.Linear(self.args['hidden_size'], self.args['num_classes'])
 
-        self.lockdrop = LockedDropout(args,dropout=0.25)
-##### dropout is currently hard coded
+        self.lockdrop = LockedDropout(args,dropout=self.args['dropout'])
         
     def forward(self, input, hidden=None):
         

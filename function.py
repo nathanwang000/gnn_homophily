@@ -35,7 +35,8 @@ def HPsearch(args,Net):
         args['randominit'] = int(randominit)
         
         args['learning_rate'] = np.random.choice([0.1, 0.01])
-        args['dropout'] = np.random.choice([.05,.1,.15,.2,.25]) #RNN dropout currently hardcoded.
+        # args['dropout'] = np.random.choice([.05,.1,.15,.2,.25]) #RNN dropout currently hardcoded.
+        args['dropout'] = np.random.choice([0.1, 0.2, 0.3, 0.4])
         args['heads'] = int(np.random.choice([3,1,19])) #The choice of heads depends on args['d'], heads should be a divisor of d.
         
         if args['model']=='transformer':
@@ -46,12 +47,16 @@ def HPsearch(args,Net):
 
         elif args['model']=='pytorchLSTM':
             args['batch_size'] = int(np.random.choice([10, 25, 50, 75]))
-            args['l2'] = np.random.choice([0.001, 0.01, 0.1])
-#             args['hidden_size'] = int(np.random.choice([100,300,600,900])) 
-            args['hidden_size'] = int(np.random.choice([600,900,1200,1500]))
-            args['depth'] = 1
-                    
+            # args['l2'] = np.random.choice([0.001, 0.01, 0.1])
+            args['l2'] = np.random.choice([0.01, 0.05, 0.1, 0.15])
+            args['depth'] = int(np.random.choice([1,2]))
+            if args['depth']==1:
+                args['hidden_size'] = int(np.random.choice([600,900,1200,1500]))
+            elif args['depth']==2:
+                args['hidden_size'] = int(np.random.choice([300,450,600,750]))
+
         #Learn Model
+        print('hidden size {}, depth {}'.format(args['hidden_size'], args['depth']))
         zpred_df, ztraintestloss_df = learn_model(args,Net,HP_feature_list)
 
         #Update DF
@@ -88,6 +93,7 @@ def learn_model(args,Net,HP_feature_list):
     model = Net(args)
     if args['use_cuda']:
         model.cuda()
+    print('num params: {}'.format(count_parameters(model)))
 
     #Epochs
 #     earlystop = []
@@ -95,6 +101,11 @@ def learn_model(args,Net,HP_feature_list):
     best_val_auc = None
     for epoch in range(1, args['epochs']+1):
         print('epoch: {}'.format(epoch))
+#         print('max memory cached {}'.format(torch.cuda.max_memory_cached(device=args['cuda'])))
+#         print('max memory allocated {}'.format(torch.cuda.max_memory_allocated(device=args['cuda'])))
+#         torch.cuda.reset_max_memory_cached(device=args['cuda'])
+#         torch.cuda.reset_max_memory_allocated(device=args['cuda'])
+            
         args['current_epoch'] = epoch
 
         #Train
@@ -171,34 +182,34 @@ def train(train_loader, model, args, optimizer):
     return
 
 # Target Replication
-def loss_opt(args, output, target, seqlen):
-    output = output.view(-1,args['num_classes'])
-    target = target.flatten()
-
-    maxseqlen = max(seqlen)
-    mask = torch.arange(maxseqlen)[None, :]< torch.FloatTensor(seqlen)[:, None]
-    mask = mask.type(torch.FloatTensor).flatten()        
-    loss = torch.sum(F.cross_entropy(output,target,reduction='none')*mask.cuda())
-    return loss, sum(seqlen)
-
-# Subsample 3
 # def loss_opt(args, output, target, seqlen):
 #     output = output.view(-1,args['num_classes'])
 #     target = target.flatten()
 
-#     maxseqlen = max(seqlen)    
-#     subsmpl = [np.random.choice(x, size=3, replace=True) for x in seqlen]
-#     # replace=True because of the case where seqlen = 2. This can happen if day of CDI is 4 in the training set.
-    
-#     mask1 = torch.arange(maxseqlen)[None,:] == torch.FloatTensor([x[0] for x in subsmpl])[:,None]
-#     mask2 = torch.arange(maxseqlen)[None,:] == torch.FloatTensor([x[1] for x in subsmpl])[:,None]
-#     mask3 = torch.arange(maxseqlen)[None,:] == torch.FloatTensor([x[2] for x in subsmpl])[:,None]
-    
-#     mask = torch.max(mask1.type(torch.FloatTensor),mask2.type(torch.FloatTensor))
-#     mask = torch.max(mask, mask3.type(torch.FloatTensor)).flatten()
-    
+#     maxseqlen = max(seqlen)
+#     mask = torch.arange(maxseqlen)[None, :]< torch.FloatTensor(seqlen)[:, None]
+#     mask = mask.type(torch.FloatTensor).flatten()        
 #     loss = torch.sum(F.cross_entropy(output,target,reduction='none')*mask.cuda())
-#     return loss, 3*len(seqlen) #this is an approximation because there will be cases where it should be 2 and not 3.
+#     return loss, sum(seqlen)
+
+# Subsample 3
+def loss_opt(args, output, target, seqlen):
+    output = output.view(-1,args['num_classes'])
+    target = target.flatten()
+
+    maxseqlen = max(seqlen)    
+    subsmpl = [np.random.choice(x, size=3, replace=True) for x in seqlen]
+    # replace=True because of the case where seqlen = 2. This can happen if day of CDI is 4 in the training set.
+    
+    mask1 = torch.arange(maxseqlen)[None,:] == torch.FloatTensor([x[0] for x in subsmpl])[:,None]
+    mask2 = torch.arange(maxseqlen)[None,:] == torch.FloatTensor([x[1] for x in subsmpl])[:,None]
+    mask3 = torch.arange(maxseqlen)[None,:] == torch.FloatTensor([x[2] for x in subsmpl])[:,None]
+    
+    mask = torch.max(mask1.type(torch.FloatTensor),mask2.type(torch.FloatTensor))
+    mask = torch.max(mask, mask3.type(torch.FloatTensor)).flatten()
+    
+    loss = torch.sum(F.cross_entropy(output,target,reduction='none')*mask.cuda())
+    return loss, 3*len(seqlen) #this is an approximation because there will be cases where it should be 2 and not 3.
 
 # Max Onwards
 # def loss_opt(args, output, target, seqlen):
