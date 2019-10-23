@@ -51,9 +51,9 @@ def HPsearch(args,Net):
             args['l2'] = np.random.choice([0.01, 0.05, 0.1, 0.15])
             args['depth'] = int(np.random.choice([1,2]))
             if args['depth']==1:
-                args['hidden_size'] = int(np.random.choice([600,900,1200,1500]))
+                args['hidden_size'] = int(np.random.choice([600,900,1200,1500,1800]))
             elif args['depth']==2:
-                args['hidden_size'] = int(np.random.choice([300,450,600,750]))
+                args['hidden_size'] = int(np.random.choice([450,600,750,900]))
 
         #Learn Model
         print('hidden size {}, depth {}'.format(args['hidden_size'], args['depth']))
@@ -94,6 +94,11 @@ def learn_model(args,Net,HP_feature_list):
     if args['use_cuda']:
         model.cuda()
     print('num params: {}'.format(count_parameters(model)))
+    
+    #optimizer = torch.optim.SGD(model.parameters(),lr=args['learning_rate'], weight_decay=args['l2']) 
+    optimizer = torch.optim.Adam(model.parameters(),weight_decay=args['l2'])
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
+
 
     #Epochs
 #     earlystop = []
@@ -109,8 +114,6 @@ def learn_model(args,Net,HP_feature_list):
         args['current_epoch'] = epoch
 
         #Train
-        #optimizer = torch.optim.SGD(model.parameters(),lr=args['learning_rate'], weight_decay=args['l2']) 
-        optimizer = torch.optim.Adam(model.parameters(),weight_decay=args['l2'])
         train(train_loader, model, args, optimizer)
 
         #Evaluate
@@ -148,6 +151,8 @@ def learn_model(args,Net,HP_feature_list):
 #             if abs(earlystop.pop(0)-valauc)<.0001:
 #                 break
 #         earlystop.append(valauc)
+
+        scheduler.step()
             
     #Prepare Pred DF    
     pred_df = pred_df.append(best_zdf)
