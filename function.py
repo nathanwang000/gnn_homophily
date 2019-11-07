@@ -51,9 +51,9 @@ def HPsearch(args,Net):
             args['l2'] = np.random.choice([0.01, 0.05, 0.1, 0.15])
             args['depth'] = int(np.random.choice([1,2]))
             if args['depth']==1:
-                args['hidden_size'] = int(np.random.choice([600,900,1200,1500,1800]))
+                args['hidden_size'] = int(np.random.choice([600,900,1200,1500]))
             elif args['depth']==2:
-                args['hidden_size'] = int(np.random.choice([450,600,750,900]))
+                args['hidden_size'] = int(np.random.choice([450,600]))
 
         #Learn Model
         print('hidden size {}, depth {}'.format(args['hidden_size'], args['depth']))
