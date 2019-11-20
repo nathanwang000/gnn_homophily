@@ -342,7 +342,7 @@ class gcn_lstm(nn.Module):
         super(gcn_lstm, self).__init__()
         
         self.args = args.copy()
-        self.gc1 = GraphConvolution(2*args['sig_T'],args['hidden_size_gcn'])
+        self.gc1 = GraphConvolution(2*args['sig_T']+1,args['hidden_size_gcn'])
         self.gc2 = GraphConvolution(args['hidden_size_gcn'], args['embedding_size'])
         self.args['d'] = self.args['d'] + self.args['embedding_size']
         self.lstm = pytorchLSTM(self.args)
@@ -362,4 +362,31 @@ class gcn_lstm(nn.Module):
     
         X = torch.cat((X, embedding), dim=2)
         output = self.lstm(X)
+        return output        
+
+class simple_gcn_lstm(nn.Module):
+
+    def __init__(self, args):
+        super(simple_gcn_lstm, self).__init__()
+        
+        self.args = args.copy()
+        self.gc1 = GraphConvolution(2*args['sig_T']+1,args['hidden_size_gcn'])
+        self.gc2 = GraphConvolution(args['hidden_size_gcn'], args['embedding_size'])
+        self.args['d'] = self.args['embedding_size']
+        self.lstm = pytorchLSTM(self.args)
+        
+        
+    def forward(self, S, A, seqlen, T):       
+        embedding = F.relu(self.gc1(S, A))
+        embedding = F.dropout(embedding, self.args['dropout'], training=self.training)
+        embedding = self.gc2(embedding, A) # (sum(T_i), N_max, embedding_size)
+
+        embedding = embedding[:, 0, :]
+        
+        i_list = [int(sum(seqlen[:ind].cpu().numpy())) for ind in range(len(seqlen))]
+        j_list = [int(i_list[ind]+seqlen[ind].cpu().numpy()) for ind in range(len(seqlen))]
+        embedding = [ torch.cat((embedding[i:j,:],embedding.new_zeros((T-k,self.args['embedding_size']))))  for i,j,k in zip(i_list, j_list, seqlen.cpu().numpy().astype('int'))]
+        embedding = torch.stack(embedding, dim=0)
+    
+        output = self.lstm(embedding)
         return output        

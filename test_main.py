@@ -30,13 +30,13 @@ parser=argparse.ArgumentParser()
 parser.add_argument('--id', type=str,help='Determines save name')
 parser.add_argument('--model',type=str,help='Determines which model is used')
 parser.add_argument('--cuda',type=int)
+parser.add_argument('--task',type=str) #cdi, neighbors
 
 #Data
 parser.add_argument('--data_loc',type=str,default='/data4/jeeheh/ShadowPeriod/Data/Adult_fulldata_2_14_19_v16 - labs and meds fixed - Without Procedures BMI Fixed/',help='Location of data')
 parser.add_argument('--locdata_loc',type=str,default='/data4/jeeheh/ShadowPeriod/Toy/Toy_locations.csv')
 parser.add_argument('--auxdata_loc',type=str,default='/data4/jeeheh/ShadowPeriod/Toy/Toy_CDI.csv')
 # parser.add_argument('--INSTANCE_KEYS',nargs='+',type=str,default=['season_title_id', 'country_iso_code', 'days_since_launch'])
-parser.add_argument('--num_classes',type=int,default=2)
 parser.add_argument('--sig-T',type=int,default=14)
 
 # #Phantom Step: Adds in t=-91 for PostGL
@@ -65,6 +65,16 @@ args['use_cuda'] = torch.cuda.is_available()
 if args['use_cuda']:
     torch.cuda.set_device(args['cuda'])
     print('Run on cuda: {}'.format(torch.cuda.current_device()))
+    
+#Task
+if args['task'] == 'cdi': 
+    args['classification'] = True
+    args['num_classes'] = 2
+elif args['task'] == 'neighbors':
+    args['classification'] = False
+    args['num_classes'] = 1
+else:
+    raise ValueError('Error: No task')
 
 # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 # Save Settings/ Create experiment output folder
@@ -136,7 +146,10 @@ if args['model']=='transformer':
     
 if args['model']=='gcn':
     custom_function.HPsearch(args,custom_model.gcn_lstm)
-    
+
+if args['model']=='simple_gcn':
+    custom_function.HPsearch(args,custom_model.simple_gcn_lstm)
+
 #Save copy of args in Subfolder        
 with open(os.path.join(args['save_folder'],args['id'],'args.pkl'), 'wb') as f:
     pickle.dump(args, f, pickle.HIGHEST_PROTOCOL)

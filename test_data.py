@@ -43,15 +43,14 @@ def import_loc_aux_data(args):
 
     loc_df['StartDate'] = pd.to_datetime(loc_df.StartDate)
     loc_df['EndDate'] = pd.to_datetime(loc_df.EndDate)
+    
+    loc_df['AdmitDate'] = pd.to_datetime(pd.to_datetime(loc_df.AdmitDate).dt.date)
+    loc_df['DischargeDate'] = pd.to_datetime(pd.to_datetime(loc_df.DischargeDate).dt.date)
 
     # Location IDs, Admit IDs
 #     loc_df['locid'] = loc_df.fillna('MISSING').groupby(['Bed','FacilityCode','Room','Unit']).ngroup()
     loc_df['locid'] = loc_df.fillna('MISSING').groupby(['FacilityCode','Unit']).ngroup()
     loc_df['aid'] = loc_df.fillna('MISSING').groupby(['PatientID','AdmitDate','DischargeDate']).ngroup()
-    
-    loc_df['AdmitDate'] = pd.to_datetime(pd.to_datetime(loc_df.AdmitDate).dt.date)
-    loc_df['DischargeDate'] = pd.to_datetime(pd.to_datetime(loc_df.DischargeDate).dt.date)
-
 
     # Auxiliary Information DF #########################################################################
     print('Importing Auxiliary Information...')
@@ -96,11 +95,37 @@ def format_data(args):
                        'DischargeDate':testref[:,refcols['DischargeDate']],
                        'PatientID':testref[:,refcols['PatientID']],
                        'eid':testref[:,refcols['EncounterID']],
-                       'day':testref[:,refcols['Day']]})
+                       'day':testref[:,refcols['Day']],
+                       'Date':testref[:,refcols['Date']],
+                       'y':ytest})
     key['index'] = np.arange(key.shape[0])
     key = key.merge(loc_df.loc[:,['PatientID','AdmitDate','DischargeDate','aid']].drop_duplicates(), 
                     how='inner', on=['PatientID','AdmitDate','DischargeDate'])
     
+    # NEW LABEL: How many neighbors up to today?
+    if args['task'] == 'neighbors':
+        # Which locations have has a patient been in? (on a aid/Date basis)
+        newlabel = key.loc[:,['aid','Date','index']].merge(loc_df.loc[:,['StartDate','EndDate','locid','aid']], how='left', on=['aid'])
+        newlabel = newlabel.loc[((newlabel.Date>=newlabel.StartDate) & (newlabel.Date<=newlabel.EndDate)),:]
+        newlabel.drop(['StartDate','EndDate'],axis=1,inplace=True)
+        # Which other patients were in that location on that day? 
+        newlabel = newlabel.merge(newlabel.drop(['index'],axis=1),how='left',on=['Date','locid'])
+        newlabel = newlabel.loc[newlabel.aid_x!=newlabel.aid_y,:]
+        newlabel = newlabel.drop(['locid'],axis=1).drop_duplicates() 
+            # this is just in case so we don't double count neighbors, regardless of location
+            #eg: may have met patient in loc a and b -> but only counts neighbor once. this is to reflect how the adj matrix is created.
+        # Collapse sum: how many neighbors per day.
+        newlabel = newlabel.groupby(['aid_x','Date','index'],as_index=False)['aid_y'].count()
+        # Insert Days with zero neighbors.
+        newlabel = newlabel.merge(key.loc[:,['index','aid','Date']].rename(columns={'aid':'aid_x'}),how='outer',on=['index','aid_x','Date'],indicator=True)
+        newlabel['aid_y'].fillna(value=0,inplace=True)
+        newlabel.drop(['_merge'],axis=1,inplace=True)
+        # Cumulative sum: how many neighbors up to now
+        newlabel['y'] = newlabel.sort_values(['aid_x','Date']).groupby(['aid_x'],as_index=False)['aid_y'].cumsum().astype('float')
+        # Merge new labels back into key
+        key.drop(['y'],axis=1,inplace=True)
+        key = key.merge(newlabel.loc[:,['index','y']],how='left',on='index')
+
     #Split Train/Val/Test
     key['val'] = key.AdmitDate.dt.month==3
     key['test'] = key.AdmitDate.dt.month==5
@@ -108,13 +133,13 @@ def format_data(args):
     
     #Sort by eid/day. Add to key: eid, seqlen, start_index 
     xval, yval, keyval = sort_eid_day(xtest[key.loc[key.val,'index'],:],
-                                      ytest[key.loc[key.val,'index']],
+                                      key.loc[key.val,'y'].values,
                                      key.loc[key.val,['eid','day','aid','AdmitDate','DischargeDate']])
     xtrain, ytrain, keytrain = sort_eid_day(xtest[key.loc[key.train,'index'],:], 
-                                            ytest[key.loc[key.train,'index']], 
+                                            key.loc[key.train,'y'].values,
                                             key.loc[key.train,['eid','day','aid','AdmitDate','DischargeDate']])
     xtest, ytest, keytest = sort_eid_day(xtest[key.loc[key.test,'index'],:], 
-                                         ytest[key.loc[key.test,'index']], 
+                                         key.loc[key.test,'y'].values,
                                          key.loc[key.test,['eid','day','aid','AdmitDate','DischargeDate']])
 
     return xtrain, ytrain, keytrain, xval, yval, keyval, xtest, ytest, keytest, loc_df, cdi_df
@@ -162,6 +187,7 @@ def create_signal_mat(args, df, date, key):
 
     sig_mat = np.zeros((key.shape[0],2*T))
     sig_mat[df.matid.values,df.daysfromnow.values] = 1
+    sig_mat = np.concatenate((sig_mat,np.ones((sig_mat.shape[0],1))),axis=1)
     
     return sig_mat
 
@@ -180,7 +206,7 @@ class dataset_obj(torch.utils.data.Dataset):
         self.N = self.datakey.shape[0]
         self.d = self.data.shape[1]
         
-        self.labels = torch.LongTensor(self.labels)        
+#         self.labels = torch.LongTensor(self.labels)        
 
     def __len__(self):
         return self.N
@@ -205,7 +231,8 @@ class dataset_obj(torch.utils.data.Dataset):
             A_list.append(torch.FloatTensor(A_mat).cuda())
             S_list.append(torch.FloatTensor(create_signal_mat(self.args, self.cdi_df, date, key)).cuda())
 #         return torch.FloatTensor(x.todense()).cuda(), torch.LongTensor(y).cuda(), idx, seqlen, A_list, S_list
-        return x, torch.LongTensor(y).cuda(), idx, seqlen, A_list, S_list                        
+        if self.args['classification']: return x, torch.LongTensor(y).cuda(), idx, seqlen, A_list, S_list
+        else: return x, torch.FloatTensor(y).cuda(), idx, seqlen, A_list, S_list
                                  
                                  
 def mat_pad(batch_list, n, m):

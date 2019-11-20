@@ -57,7 +57,7 @@ def HPsearch(args,Net):
             elif args['depth']==2:
                 args['hidden_size'] = int(np.random.choice([450,600]))
         
-        elif args['model']=='gcn':
+        elif args['model'] in ['gcn','simple_gcn']:
             args['batch_size'] = int(np.random.choice([10, 25, 50, 75]))
             args['l2'] = np.random.choice([0.01, 0.05, 0.1, 0.2, 0.4])
             args['depth'] = int(np.random.choice([1,2]))
@@ -144,11 +144,15 @@ def learn_model(args,Net,HP_feature_list):
                                                                  'randominit':[args['randominit']]}))
 
         #Val Loss
-        if best_val_auc is None: best_val_auc = valauc
-        elif valauc > best_val_auc: best_val_auc = valauc
-
+        if args['classification']:
+            if best_val_auc is None: best_val_auc = valauc
+            elif valauc > best_val_auc: best_val_auc = valauc
+        else: #regression
+            if best_val_auc is None: best_val_auc = valloss
+            elif valloss < best_val_auc: best_val_auc = valloss 
+                
         #Update Output/Target dicts & Save Models
-        if valauc==best_val_auc:
+        if ((args['classification']==True) & (valauc==best_val_auc)) | ((args['classification']==False) & (valloss==best_val_auc)):
             best_zdf = zdf
             best_val_zdf = val_zdf
             torch.save(model.state_dict(), os.path.join(args['save_folder'],
@@ -179,10 +183,14 @@ def train(train_loader, model, args, optimizer):
     model.train()
     for batch_idx, (data, target, seqlen, indices, A, S) in enumerate(train_loader):
         
-        data, target, S, A, seqlen = Variable(data), Variable(target), Variable(S), Variable(A), Variable(seqlen)
+        if args['model']=='gcn': data, target, S, A, seqlen = Variable(data), Variable(target), Variable(S), Variable(A), Variable(seqlen)
+        elif args['model']=='simple_gcn': target, S, A, seqlen = Variable(target), Variable(S), Variable(A), Variable(seqlen)
+
         optimizer.zero_grad()  
-        output = model(data, S, A, seqlen)
-                
+        
+        if args['model']=='gcn': output = model(data, S, A, seqlen)
+        elif args['model']=='simple_gcn': output = model(S, A, seqlen, data.shape[1])
+            
         loss, _ = loss_opt(args,output,target,seqlen)
         loss.backward()
         optimizer.step()
@@ -216,8 +224,10 @@ def loss_opt(args, output, target, seqlen):
     
     mask = torch.max(mask1.type(torch.FloatTensor),mask2.type(torch.FloatTensor))
     mask = torch.max(mask, mask3.type(torch.FloatTensor)).flatten()
+#     pdb.set_trace()
     
-    loss = torch.sum(F.cross_entropy(output,target,reduction='none')*mask.cuda())
+    if args['classification']: loss = torch.sum(F.cross_entropy(output,target,reduction='none')*mask.cuda())
+    else: loss = torch.sum(F.l1_loss(output.flatten(),target,reduction='none')*mask.cuda())
     return loss, 3*len(seqlen) #this is an approximation because there will be cases where it should be 2 and not 3.
 
 # Max Onwards
@@ -259,16 +269,20 @@ def test(test_loader, model, args, dataset):
 
         for data, labels, seqlen, indices, A, S in test_loader:
 
-            data, labels, S, A, seqlen = Variable(data), Variable(labels), Variable(S), Variable(A), Variable(seqlen)
+            if args['model']=='gcn': data, labels, S, A, seqlen = Variable(data), Variable(labels), Variable(S), Variable(A), Variable(seqlen)
+            elif args['model']=='simple_gcn': labels, S, A, seqlen = Variable(labels), Variable(S), Variable(A), Variable(seqlen)
 
             #Calculate Loss 
-            output = model(data, S, A, seqlen)
+            if args['model']=='gcn': output = model(data, S, A, seqlen)
+            elif args['model']=='simple_gcn': output = model(S, A, seqlen, data.shape[1])
+                
             loss, denom_add = loss_opt(args, output, labels, seqlen)
             total_loss = total_loss + loss.detach().cpu().numpy()
             total_sum = total_sum + denom_add
 
             #Calculate AUROC (Evaluation Metric: taking the max)
-            outputs = F.softmax(model(data, S, A, seqlen),dim=2)[:,:,1]
+            if args['model']=='gcn': outputs = F.softmax(model(data, S, A, seqlen),dim=2)[:,:,1]
+            elif args['model']=='simple_gcn': outputs = model(S, A, seqlen, data.shape[1])[:,:,0]
             # likelihood of CDI positive, ranges from 0-1
             # batch_size x max_seqlen x num_classes
 
@@ -285,8 +299,10 @@ def test(test_loader, model, args, dataset):
                                         'outputs':outputs.cpu().numpy(),
                                         'eid':test_loader.dataset.datakey.loc[indices,'eid']}))
 
-        auroc = roc_auc_score(df.labels.values, df.outputs.values)
-        print('--{} auc: {:.5f}'.format(dataset,auroc))
+        if args['classification']: 
+            auroc = roc_auc_score(df.labels.values, df.outputs.values)
+            print('--{} auc: {:.5f}'.format(dataset,auroc))
+        else: auroc = np.nan
         print('--{} celoss: {:.5f}'.format(dataset,total_loss/total_sum))
         df['dataset'] = [dataset]*df.shape[0]
 
