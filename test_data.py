@@ -125,7 +125,7 @@ def format_data(args):
         # Merge new labels back into key
         key.drop(['y'],axis=1,inplace=True)
         key = key.merge(newlabel.loc[:,['index','y']],how='left',on='index')
-#         key['y'] = key['y']/100
+        key['y'] = key['y']/100
 
     #Split Train/Val/Test
     key['val'] = key.AdmitDate.dt.month==3

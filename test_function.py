@@ -97,7 +97,9 @@ def HPsearch(args,Net):
 #         traintestloss_df.to_hdf(os.path.join(args['save_folder'],args['id'],'data.h5'),'traintestloss')
         zpred_df.to_hdf(os.path.join(args['save_folder'],args['id'],'data'+str(randominit)+'.h5'),'pred')
         ztraintestloss_df.to_hdf(os.path.join(args['save_folder'],args['id'],'data'+str(randominit)+'.h5'),'traintestloss')
-
+        del zpred_df
+        del ztraintestloss_df
+        
     return 
     
 @profile
@@ -115,7 +117,7 @@ def learn_model(args,Net,HP_feature_list, train_loader, val_loader, test_loader)
     
     #optimizer = torch.optim.SGD(model.parameters(),lr=args['learning_rate'], weight_decay=args['l2']) 
     optimizer = torch.optim.Adam(model.parameters(),weight_decay=args['l2'])
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=15, gamma=0.1)
 
 
     #Epochs
@@ -124,15 +126,10 @@ def learn_model(args,Net,HP_feature_list, train_loader, val_loader, test_loader)
     best_val_auc = None
     for epoch in range(1, args['epochs']+1):
         print('epoch: {}'.format(epoch))
-#         print('max memory cached {}'.format(torch.cuda.max_memory_cached(device=args['cuda'])))
-#         print('max memory allocated {}'.format(torch.cuda.max_memory_allocated(device=args['cuda'])))
-#         torch.cuda.reset_max_memory_cached(device=args['cuda'])
-#         torch.cuda.reset_max_memory_allocated(device=args['cuda'])
-            
         args['current_epoch'] = epoch
 
         #Train
-        train(train_loader, model, args, optimizer)
+#         train(train_loader, model, args, optimizer)
 
         #Evaluate
         zdf, testauc, testloss = test(test_loader, model, args, 'test')  
@@ -263,7 +260,6 @@ def loss_opt(args, output, target, seqlen):
 #     loss = torch.sum(F.cross_entropy(output,target,reduction='none')*mask.cuda())
 #     return loss, sum(mask).numpy()
 
-@profile
 def test(test_loader, model, args, dataset):
     
     model.eval()    

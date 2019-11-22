@@ -7,7 +7,6 @@ import pickle
 import sys
 import datetime
 from shutil import copyfile
-from sklearn.linear_model import LinearRegression
 import torch
 import scipy
 import pdb
@@ -33,7 +32,7 @@ parser.add_argument('--cuda',type=int)
 parser.add_argument('--task',type=str) #cdi, neighbors
 
 #Data
-parser.add_argument('--data_loc',type=str,default='/data4/jeeheh/ShadowPeriod/Data/Adult_fulldata_2_14_19_v16 - labs and meds fixed - Without Procedures BMI Fixed/',help='Location of data')
+parser.add_argument('--data_loc',type=str,default='/data4/jeeheh/ShadowPeriod/Data/UM_CDI/',help='Location of data')
 parser.add_argument('--locdata_loc',type=str,default='/data4/jeeheh/ShadowPeriod/Toy/Toy_locations.csv')
 parser.add_argument('--auxdata_loc',type=str,default='/data4/jeeheh/ShadowPeriod/Toy/Toy_CDI.csv')
 # parser.add_argument('--INSTANCE_KEYS',nargs='+',type=str,default=['season_title_id', 'country_iso_code', 'days_since_launch'])
