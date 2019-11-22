@@ -16,14 +16,31 @@ from matplotlib.lines import Line2D
 import test_data as custom_data
 from sklearn.metrics import roc_auc_score
 
+from memory_profiler import profile
+
 
 #############################################################################################################
 
 def HPsearch(args,Net):
 
-    #Init Empty
-    pred_df=pd.DataFrame({})
-    traintestloss_df=pd.DataFrame({})
+#     #Init Empty
+#     pred_df=pd.DataFrame({})
+#     traintestloss_df=pd.DataFrame({})
+
+    #Load Data
+    args['batch_size'] = 50
+    train_data = custom_data.dataset_obj(args,'train')
+    train_loader = torch.utils.data.DataLoader(train_data,batch_size=args['batch_size'],shuffle=True, 
+                                               collate_fn=custom_data.custom_collate_fn)
+    val_data = custom_data.dataset_obj(args,'val')
+    val_loader = torch.utils.data.DataLoader(val_data,batch_size=args['batch_size'],shuffle=False, 
+                                               collate_fn=custom_data.custom_collate_fn)
+    test_data = custom_data.dataset_obj(args,'test')
+    test_loader = torch.utils.data.DataLoader(test_data,batch_size=args['batch_size'],shuffle=False,
+                                             collate_fn=custom_data.custom_collate_fn)
+    
+    args['d']=int(train_data.d)
+    print('-- load data finished')
 
     #Random Init/Hyperparameter Search Budget
     for randominit in range(args['budget']):
@@ -42,13 +59,13 @@ def HPsearch(args,Net):
 
         
         if args['model']=='transformer':
-            args['batch_size'] = int(np.random.choice([25, 50, 75, 100])) 
+#             args['batch_size'] = int(np.random.choice([25, 50, 75, 100])) 
             args['l2'] = np.random.choice([0.001, 0.005, 0.01]) 
             args['hidden_size'] = int(np.random.choice([100,150,200,250,300])) 
             args['depth'] = int(np.random.choice([2,3,4,5])) 
 
         elif args['model']=='pytorchLSTM':
-            args['batch_size'] = int(np.random.choice([10, 25, 50, 75]))
+#             args['batch_size'] = int(np.random.choice([10, 25, 50, 75]))
             # args['l2'] = np.random.choice([0.001, 0.01, 0.1])
             args['l2'] = np.random.choice([0.01, 0.05, 0.1, 0.15])
             args['depth'] = int(np.random.choice([1,2]))
@@ -58,7 +75,7 @@ def HPsearch(args,Net):
                 args['hidden_size'] = int(np.random.choice([450,600]))
         
         elif args['model'] in ['gcn','simple_gcn']:
-            args['batch_size'] = int(np.random.choice([10, 25, 50, 75]))
+#             args['batch_size'] = int(np.random.choice([10, 25, 50, 75]))
             args['l2'] = np.random.choice([0.01, 0.05, 0.1, 0.2, 0.4])
             args['depth'] = int(np.random.choice([1,2]))
             if args['depth']==1:
@@ -69,38 +86,27 @@ def HPsearch(args,Net):
 
         #Learn Model
         print('hidden size {}, depth {}'.format(args['hidden_size'], args['depth']))
-        zpred_df, ztraintestloss_df = learn_model(args,Net,HP_feature_list)
+        zpred_df, ztraintestloss_df = learn_model(args,Net,HP_feature_list, train_loader, val_loader, test_loader)
 
-        #Update DF
-        traintestloss_df = traintestloss_df.append(ztraintestloss_df, ignore_index=True)
-        pred_df = pred_df.append(zpred_df, ignore_index=True)
+#         #Update DF
+#         traintestloss_df = traintestloss_df.append(ztraintestloss_df, ignore_index=True)
+#         pred_df = pred_df.append(zpred_df, ignore_index=True)
                 
         #Save DF
-        pred_df.to_hdf(os.path.join(args['save_folder'],args['id'],'data.h5'),'pred')
-        traintestloss_df.to_hdf(os.path.join(args['save_folder'],args['id'],'data.h5'),'traintestloss')
+#         pred_df.to_hdf(os.path.join(args['save_folder'],args['id'],'data.h5'),'pred')
+#         traintestloss_df.to_hdf(os.path.join(args['save_folder'],args['id'],'data.h5'),'traintestloss')
+        zpred_df.to_hdf(os.path.join(args['save_folder'],args['id'],'data'+str(randominit)+'.h5'),'pred')
+        ztraintestloss_df.to_hdf(os.path.join(args['save_folder'],args['id'],'data'+str(randominit)+'.h5'),'traintestloss')
+
     return 
     
-
-def learn_model(args,Net,HP_feature_list):
+@profile
+def learn_model(args,Net,HP_feature_list, train_loader, val_loader, test_loader):
     
     #Init
     pred_df=pd.DataFrame({})
     traintestloss_df=pd.DataFrame({})
     
-    #Load Data
-    train_data = custom_data.dataset_obj(args,'train')
-    train_loader = torch.utils.data.DataLoader(train_data,batch_size=args['batch_size'],shuffle=True, 
-                                               collate_fn=custom_data.custom_collate_fn)
-    val_data = custom_data.dataset_obj(args,'val')
-    val_loader = torch.utils.data.DataLoader(val_data,batch_size=args['batch_size'],shuffle=False, 
-                                               collate_fn=custom_data.custom_collate_fn)
-    test_data = custom_data.dataset_obj(args,'test')
-    test_loader = torch.utils.data.DataLoader(test_data,batch_size=args['batch_size'],shuffle=False,
-                                             collate_fn=custom_data.custom_collate_fn)
-    
-    args['d']=int(train_data.d)
-    print('-- load data finished')
-
     #Init Model
     model = Net(args)
     if args['use_cuda']:
@@ -176,7 +182,6 @@ def learn_model(args,Net,HP_feature_list):
         pred_df[feature]=[args[feature]]*pred_df.shape[0]
     
     return pred_df, traintestloss_df
-
 
 
 def train(train_loader, model, args, optimizer):
@@ -258,6 +263,7 @@ def loss_opt(args, output, target, seqlen):
 #     loss = torch.sum(F.cross_entropy(output,target,reduction='none')*mask.cuda())
 #     return loss, sum(mask).numpy()
 
+@profile
 def test(test_loader, model, args, dataset):
     
     model.eval()    

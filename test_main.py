@@ -45,7 +45,7 @@ parser.add_argument('--sig-T',type=int,default=14)
 # parser.set_defaults(phantom_step=True)
 
 #Hyperparameters
-parser.add_argument('--epochs',type=int,default=10) 
+parser.add_argument('--epochs',type=int,default=20) 
 parser.add_argument('--budget',type=int,default=5) 
 
 args=parser.parse_args()

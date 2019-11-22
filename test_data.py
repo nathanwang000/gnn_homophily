@@ -125,6 +125,7 @@ def format_data(args):
         # Merge new labels back into key
         key.drop(['y'],axis=1,inplace=True)
         key = key.merge(newlabel.loc[:,['index','y']],how='left',on='index')
+#         key['y'] = key['y']/100
 
     #Split Train/Val/Test
     key['val'] = key.AdmitDate.dt.month==3
@@ -198,7 +199,10 @@ class dataset_obj(torch.utils.data.Dataset):
         self.args = args.copy()
         self.data = scipy.sparse.load_npz(os.path.join(args['save_folder'],args['id'],"data"+dataset+"x_temp.npz"))
         self.data = torch.FloatTensor(self.data.todense()).cuda()
-        self.labels = np.load(os.path.join(args['save_folder'],args['id'],"data"+dataset+"y_temp.npy"))        
+        if self.args['classification']:
+            self.labels = torch.LongTensor(np.load(os.path.join(args['save_folder'],args['id'],"data"+dataset+"y_temp.npy"))).cuda()      
+        else: 
+            self.labels = torch.FloatTensor(np.load(os.path.join(args['save_folder'],args['id'],"data"+dataset+"y_temp.npy"))).cuda()      
         self.datakey = pd.read_hdf(os.path.join(args['save_folder'],args['id'],'datakeys_temp.h5'),key=dataset)   
         self.loc_df = pd.read_hdf(os.path.join(args['save_folder'],args['id'],'datakeys_temp.h5'),key='loc_df')
         self.cdi_df = pd.read_hdf(os.path.join(args['save_folder'],args['id'],'datakeys_temp.h5'),key='cdi_df')
@@ -210,7 +214,7 @@ class dataset_obj(torch.utils.data.Dataset):
 
     def __len__(self):
         return self.N
-    
+     
     def __getitem__(self,idx):
         
         start_index = self.datakey.iloc[idx,self.datakey.columns.get_loc('start_index')] 
@@ -218,7 +222,7 @@ class dataset_obj(torch.utils.data.Dataset):
         
 #         x = csr_matrix.reshape(self.data[start_index:start_index+seqlen,:],(seqlen,self.d))
         x = self.data[start_index:start_index+seqlen,:].view(seqlen,self.d).contiguous()
-        y = self.labels[start_index:start_index+seqlen]
+        y = self.labels[start_index:start_index+seqlen].contiguous()
         
         AdmitDate = self.datakey.iloc[idx,self.datakey.columns.get_loc('AdmitDate')]
         DischargeDate = self.datakey.iloc[idx,self.datakey.columns.get_loc('DischargeDate')]
@@ -231,8 +235,7 @@ class dataset_obj(torch.utils.data.Dataset):
             A_list.append(torch.FloatTensor(A_mat).cuda())
             S_list.append(torch.FloatTensor(create_signal_mat(self.args, self.cdi_df, date, key)).cuda())
 #         return torch.FloatTensor(x.todense()).cuda(), torch.LongTensor(y).cuda(), idx, seqlen, A_list, S_list
-        if self.args['classification']: return x, torch.LongTensor(y).cuda(), idx, seqlen, A_list, S_list
-        else: return x, torch.FloatTensor(y).cuda(), idx, seqlen, A_list, S_list
+        return x, y, idx, seqlen, A_list, S_list
                                  
                                  
 def mat_pad(batch_list, n, m):
