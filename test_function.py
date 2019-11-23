@@ -129,7 +129,7 @@ def learn_model(args,Net,HP_feature_list, train_loader, val_loader, test_loader)
         args['current_epoch'] = epoch
 
         #Train
-#         train(train_loader, model, args, optimizer)
+        train(train_loader, model, args, optimizer)
 
         #Evaluate
         zdf, testauc, testloss = test(test_loader, model, args, 'test')  
@@ -228,8 +228,13 @@ def loss_opt(args, output, target, seqlen):
     mask = torch.max(mask, mask3.type(torch.FloatTensor)).flatten()
 #     pdb.set_trace()
     
-    if args['classification']: loss = torch.sum(F.cross_entropy(output,target,reduction='none')*mask.cuda())
-    else: loss = torch.sum(F.l1_loss(output.flatten(),target,reduction='none')*mask.cuda())
+    if args['classification']: 
+        if args['use_cuda']: loss = torch.sum(F.cross_entropy(output,target,reduction='none')*mask.cuda())
+        else: loss = torch.sum(F.cross_entropy(output,target,reduction='none')*mask)
+    else: 
+        if args['use_cuda']: loss = torch.sum(F.l1_loss(output.flatten(),target,reduction='none')*mask.cuda())
+        else: loss = torch.sum(F.l1_loss(output.flatten(),target,reduction='none')*mask)
+            
     return loss, 3*len(seqlen) #this is an approximation because there will be cases where it should be 2 and not 3.
 
 # Max Onwards
@@ -294,7 +299,8 @@ def test(test_loader, model, args, dataset):
             mask = mask.type(torch.FloatTensor)
 
             #Take the max per admission with mask
-            outputs = torch.max(outputs*mask.cuda(),dim=1).values
+            if args['use_cuda']: outputs = torch.max(outputs*mask.cuda(),dim=1).values
+            else: outputs = torch.max(outputs*mask,dim=1).values
             labels = torch.max(labels,dim=1).values
 
             df = df.append(pd.DataFrame({'labels':labels.cpu().numpy(),

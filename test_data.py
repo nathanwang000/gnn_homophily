@@ -198,11 +198,16 @@ class dataset_obj(torch.utils.data.Dataset):
         
         self.args = args.copy()
         self.data = scipy.sparse.load_npz(os.path.join(args['save_folder'],args['id'],"data"+dataset+"x_temp.npz"))
-        self.data = torch.FloatTensor(self.data.todense()).cuda()
+        
+        if self.args['use_cuda']: self.data = torch.FloatTensor(self.data.todense()).cuda()
+        else: self.data = torch.FloatTensor(self.data.todense())
+            
         if self.args['classification']:
-            self.labels = torch.LongTensor(np.load(os.path.join(args['save_folder'],args['id'],"data"+dataset+"y_temp.npy"))).cuda()      
+            if self.args['use_cuda']: self.labels = torch.LongTensor(np.load(os.path.join(args['save_folder'],args['id'],"data"+dataset+"y_temp.npy"))).cuda()
+            else: self.labels = torch.LongTensor(np.load(os.path.join(args['save_folder'],args['id'],"data"+dataset+"y_temp.npy")))
         else: 
-            self.labels = torch.FloatTensor(np.load(os.path.join(args['save_folder'],args['id'],"data"+dataset+"y_temp.npy"))).cuda()      
+            if self.args['use_cuda']: self.labels = torch.FloatTensor(np.load(os.path.join(args['save_folder'],args['id'],"data"+dataset+"y_temp.npy"))).cuda()
+            else: self.labels = torch.FloatTensor(np.load(os.path.join(args['save_folder'],args['id'],"data"+dataset+"y_temp.npy")))
         self.datakey = pd.read_hdf(os.path.join(args['save_folder'],args['id'],'datakeys_temp.h5'),key=dataset)   
         self.loc_df = pd.read_hdf(os.path.join(args['save_folder'],args['id'],'datakeys_temp.h5'),key='loc_df')
         self.cdi_df = pd.read_hdf(os.path.join(args['save_folder'],args['id'],'datakeys_temp.h5'),key='cdi_df')
@@ -232,8 +237,12 @@ class dataset_obj(torch.utils.data.Dataset):
 
         for date in (AdmitDate + datetime.timedelta(n) for n in range(seqlen)):
             A_mat, key = create_adj_mat(self.loc_df, date, aid)
-            A_list.append(torch.FloatTensor(A_mat).cuda())
-            S_list.append(torch.FloatTensor(create_signal_mat(self.args, self.cdi_df, date, key)).cuda())
+            if self.args['use_cuda']:
+                A_list.append(torch.FloatTensor(A_mat).cuda())
+                S_list.append(torch.FloatTensor(create_signal_mat(self.args, self.cdi_df, date, key)).cuda())
+            else: 
+                A_list.append(torch.FloatTensor(A_mat))
+                S_list.append(torch.FloatTensor(create_signal_mat(self.args, self.cdi_df, date, key)))
 #         return torch.FloatTensor(x.todense()).cuda(), torch.LongTensor(y).cuda(), idx, seqlen, A_list, S_list
         return x, y, idx, seqlen, A_list, S_list
                                  
@@ -263,7 +272,8 @@ def custom_collate_fn(batch):
     A = mat_pad([item[4] for item in batch], n_max, n_max)
     S = mat_pad([item[5] for item in batch], n_max, batch[0][5][0].shape[1]) #first person, 5th item (S), first timestep
     
-    seqlen = torch.FloatTensor([item[3] for item in batch]).cuda()
+    if torch.cuda.is_available(): seqlen = torch.FloatTensor([item[3] for item in batch]).cuda()
+    else: seqlen = torch.FloatTensor([item[3] for item in batch])
     indices = [item[2] for item in batch]
 
     return [data, labels, seqlen, indices, A, S]    
