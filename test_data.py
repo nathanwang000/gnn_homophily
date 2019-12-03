@@ -13,6 +13,7 @@ import itertools
 import datetime
 import torch.nn.functional as F
 
+
 def import_loc_aux_data(args):
     # Location DF #################################################################
     print('Importing Location Data...')
@@ -103,7 +104,7 @@ def format_data(args):
                     how='inner', on=['PatientID','AdmitDate','DischargeDate'])
     
     # NEW LABEL: How many neighbors up to today?
-    if args['task'] == 'neighbors':
+    if (args['task'] == 'neighbors') | (args['task'] == 'neighbor_deciles'):
         # Which locations have has a patient been in? (on a aid/Date basis)
         newlabel = key.loc[:,['aid','Date','index']].merge(loc_df.loc[:,['StartDate','EndDate','locid','aid']], how='left', on=['aid'])
         newlabel = newlabel.loc[((newlabel.Date>=newlabel.StartDate) & (newlabel.Date<=newlabel.EndDate)),:]
@@ -126,12 +127,23 @@ def format_data(args):
         key.drop(['y'],axis=1,inplace=True)
         key = key.merge(newlabel.loc[:,['index','y']],how='left',on='index')
         key['y'] = key['y']/100
-
+        
     #Split Train/Val/Test
     key['val'] = key.AdmitDate.dt.month==3
     key['test'] = key.AdmitDate.dt.month==5
     key['train'] = key.AdmitDate.dt.month==4
+
     
+    #neighbor_deciles Label
+    if args['task'] == 'neighbor_deciles':
+        bincuts = []
+        for x in range(0,101,10):
+            bincuts.append(np.percentile(key.loc[key['train']==True,'y'],x))
+        bincuts[-1] = key.y.max()
+        bincuts = np.sort(list(set(bincuts)))
+        key['y'] = pd.cut(key['y'], bincuts, labels=np.arange(len(bincuts)-1), right=False)
+        args['num_classes'] = len(bincuts)-1
+
     #Sort by eid/day. Add to key: eid, seqlen, start_index 
     xval, yval, keyval = sort_eid_day(xtest[key.loc[key.val,'index'],:],
                                       key.loc[key.val,'y'].values,
@@ -191,7 +203,6 @@ def create_signal_mat(args, df, date, key):
     sig_mat = np.concatenate((sig_mat,np.ones((sig_mat.shape[0],1))),axis=1)
     
     return sig_mat
-
 
 class dataset_obj(torch.utils.data.Dataset):
     def __init__(self, args, dataset):

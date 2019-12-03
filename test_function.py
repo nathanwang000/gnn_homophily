@@ -16,7 +16,6 @@ from matplotlib.lines import Line2D
 import test_data as custom_data
 from sklearn.metrics import roc_auc_score
 
-from memory_profiler import profile
 
 
 #############################################################################################################
@@ -102,7 +101,6 @@ def HPsearch(args,Net):
         
     return 
     
-@profile
 def learn_model(args,Net,HP_feature_list, train_loader, val_loader, test_loader):
     
     #Init
@@ -147,7 +145,7 @@ def learn_model(args,Net,HP_feature_list, train_loader, val_loader, test_loader)
                                                                  'randominit':[args['randominit']]}))
 
         #Val Loss
-        if args['classification']:
+        if args['classification'] & (args['num_classes']==2):
             if best_val_auc is None: best_val_auc = valauc
             elif valauc > best_val_auc: best_val_auc = valauc
         else: #regression
@@ -231,9 +229,13 @@ def loss_opt(args, output, target, seqlen):
     if args['classification']: 
         if args['use_cuda']: loss = torch.sum(F.cross_entropy(output,target,reduction='none')*mask.cuda())
         else: loss = torch.sum(F.cross_entropy(output,target,reduction='none')*mask)
-    else: 
-        if args['use_cuda']: loss = torch.sum(F.l1_loss(output.flatten(),target,reduction='none')*mask.cuda())
-        else: loss = torch.sum(F.l1_loss(output.flatten(),target,reduction='none')*mask)
+#     elif args['tempjob'] == 'mse':
+    else:
+        if args['use_cuda']: loss = torch.sum(F.mse_loss(output.flatten(),target,reduction='none')*mask.cuda())
+        else: loss = torch.sum(F.mse_loss(output.flatten(),target,reduction='none')*mask)        
+#     else: 
+#         if args['use_cuda']: loss = torch.sum(F.l1_loss(output.flatten(),target,reduction='none')*mask.cuda())
+#         else: loss = torch.sum(F.l1_loss(output.flatten(),target,reduction='none')*mask)
             
     return loss, 3*len(seqlen) #this is an approximation because there will be cases where it should be 2 and not 3.
 
@@ -273,9 +275,11 @@ def test(test_loader, model, args, dataset):
         total_loss=0
         total_sum=0
         df=pd.DataFrame()
+        auroc = np.nan
+        calc_auroc = args['classification'] & (args['num_classes']==2)
 
         for data, labels, seqlen, indices, A, S in test_loader:
-
+            
             if args['model']=='gcn': data, labels, S, A, seqlen = Variable(data), Variable(labels), Variable(S), Variable(A), Variable(seqlen)
             elif args['model']=='simple_gcn': labels, S, A, seqlen = Variable(labels), Variable(S), Variable(A), Variable(seqlen)
 
@@ -307,10 +311,10 @@ def test(test_loader, model, args, dataset):
                                         'outputs':outputs.cpu().numpy(),
                                         'eid':test_loader.dataset.datakey.loc[indices,'eid']}))
 
-        if args['classification']: 
+        if calc_auroc: 
             auroc = roc_auc_score(df.labels.values, df.outputs.values)
             print('--{} auc: {:.5f}'.format(dataset,auroc))
-        else: auroc = np.nan
+
         print('--{} celoss: {:.5f}'.format(dataset,total_loss/total_sum))
         df['dataset'] = [dataset]*df.shape[0]
 

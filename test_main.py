@@ -29,7 +29,9 @@ parser=argparse.ArgumentParser()
 parser.add_argument('--id', type=str,help='Determines save name')
 parser.add_argument('--model',type=str,help='Determines which model is used')
 parser.add_argument('--cuda',type=int)
-parser.add_argument('--task',type=str) #cdi, neighbors
+parser.add_argument('--task',type=str) #cdi, neighbors, neighbor_deciles
+
+parser.add_argument('--tempjob',type=str) 
 
 #Data
 parser.add_argument('--data_loc',type=str,default='/data4/jeeheh/ShadowPeriod/Data/UM_CDI/',help='Location of data')
@@ -64,6 +66,7 @@ args['use_cuda'] = torch.cuda.is_available()
 if args['use_cuda']:
     torch.cuda.set_device(args['cuda'])
     print('Run on cuda: {}'.format(torch.cuda.current_device()))
+    torch.set_num_threads(4)
     
 #Task
 if args['task'] == 'cdi': 
@@ -72,6 +75,9 @@ if args['task'] == 'cdi':
 elif args['task'] == 'neighbors':
     args['classification'] = False
     args['num_classes'] = 1
+elif args['task'] == 'neighbor_deciles':
+    args['classification'] = True
+    args['num_classes'] = 10
 else:
     raise ValueError('Error: No task')
 
