@@ -104,7 +104,7 @@ def format_data(args):
                     how='inner', on=['PatientID','AdmitDate','DischargeDate'])
     
     # NEW LABEL: How many neighbors up to today?
-    if (args['task'] == 'neighbors') | (args['task'] == 'neighbor_deciles'):
+    if args['task'] in ['neighbors','neighbor_deciles','unique_neighbors']:
         # Which locations have has a patient been in? (on a aid/Date basis)
         newlabel = key.loc[:,['aid','Date','index']].merge(loc_df.loc[:,['StartDate','EndDate','locid','aid']], how='left', on=['aid'])
         newlabel = newlabel.loc[((newlabel.Date>=newlabel.StartDate) & (newlabel.Date<=newlabel.EndDate)),:]
@@ -115,6 +115,9 @@ def format_data(args):
         newlabel = newlabel.drop(['locid'],axis=1).drop_duplicates() 
             # this is just in case so we don't double count neighbors, regardless of location
             #eg: may have met patient in loc a and b -> but only counts neighbor once. this is to reflect how the adj matrix is created.
+        # Unique Neighbors
+        if args['task'] == 'unique_neighbors':
+            newlabel = newlabel.sort_values(['aid_x','Date','aid_y']).drop_duplicates(['aid_x','aid_y'], keep='first')
         # Collapse sum: how many neighbors per day.
         newlabel = newlabel.groupby(['aid_x','Date','index'],as_index=False)['aid_y'].count()
         # Insert Days with zero neighbors.
@@ -191,18 +194,58 @@ def create_adj_mat(df, date, aid):
     return adj_mat, key
 
 def create_signal_mat(args, df, date, key):
-    T=args['sig_T']
-    df = df.loc[(df.OutcomeDate<=date)&(df.OutcomeDate>=date-datetime.timedelta(days=2*T-1)),
-                                        ['aid','OutcomeDate','Outcome']]
-    df = df.merge(key, how='inner', on='aid')    
-    df['daysfromnow'] = (date - df['OutcomeDate']).dt.days + 1 
-    df = df.loc[:,['matid','daysfromnow']].drop_duplicates()
+#     T=args['sig_T']
+#     df = df.loc[(df.OutcomeDate<=date)&(df.OutcomeDate>=date-datetime.timedelta(days=2*T-1)),
+#                                         ['aid','OutcomeDate','Outcome']]
+#     df = df.merge(key, how='inner', on='aid')    
+#     df['daysfromnow'] = (date - df['OutcomeDate']).dt.days + 1 
+#     df = df.loc[:,['matid','daysfromnow']].drop_duplicates()
 
-    sig_mat = np.zeros((key.shape[0],2*T))
-    sig_mat[df.matid.values,df.daysfromnow.values] = 1
-    sig_mat = np.concatenate((sig_mat,np.ones((sig_mat.shape[0],1))),axis=1)
+#     sig_mat = np.zeros((key.shape[0],2*T))
+#     sig_mat[df.matid.values,df.daysfromnow.values] = 1
+#     sig_mat = np.concatenate((sig_mat,np.ones((sig_mat.shape[0],1))),axis=1)
     
-    return sig_mat
+#     return sig_mat
+
+    return np.ones((key.shape[0],1))
+
+def create_adj_mat_v2(df, date, aid, AdmitDate):
+    #Created in Untitled7.ipynb
+    
+    # Keep if a neighbor of aid during date range (AdmitDate,Date)   
+    df = df.loc[(df.StartDate<=date)&(df.EndDate>=AdmitDate),['aid','locid','StartDate','EndDate']]
+    neighbors = df.loc[df.aid==aid,:].merge(df.loc[df.aid!=aid,:], how='left', on='locid')
+    neighbors = neighbors.loc[(neighbors.StartDate_y<=neighbors.EndDate_x) & (neighbors.EndDate_y>=neighbors.StartDate_x),:]
+
+    # Expand dates between Admit and date
+    neighbors['date'] = date
+    neighbors['Start'] = neighbors.loc[:,['StartDate_x','StartDate_y']].max(axis=1)
+    neighbors['End'] = neighbors.loc[:,['date','EndDate_x','EndDate_y']].min(axis=1)
+    if neighbors.shape[0]>0:
+        neighbors = pd.concat([pd.DataFrame({'date': pd.date_range(row.Start, row.End, normalize=True),
+                                             'aid':row.aid_x, 'neighbor_aid':row.aid_y,
+                                             'Start':row.Start, 'End':row.End},
+                                            columns = ['date','aid','neighbor_aid','Start','End'])
+                               for i, row in neighbors.iterrows()], ignore_index=True).drop_duplicates()
+        
+        #Count Dates
+        neighbors = neighbors.groupby('neighbor_aid', as_index=False)['date'].count()
+
+    # Reinsert Self Relationship at Top // aid of interest on top
+    neighbors = pd.concat([pd.DataFrame({'neighbor_aid':[aid], 'date':[(date-AdmitDate).days+1]}), neighbors], ignore_index=True, sort=False)
+    
+    #Recopy original adj matrix - make sure all functionality is moved over
+    # Original adj matrix makes a full adj matrix - wrt all nodes 
+    # Note - in this version - we ae not creating a full adj matrix wrt to all nodes. Only the first row is populated.
+    n = neighbors.shape[0]
+    neighbors['matid'] = np.arange(neighbors.shape[0])
+    adj_mat = np.zeros((n,n))
+    adj_mat[0,neighbors['matid']] = neighbors.date.values
+    neighbors = neighbors.loc[:,['neighbor_aid','matid']]
+    neighbors.rename({'neighbor_aid':'aid'},axis=1,inplace=True)
+
+    return adj_mat, neighbors
+
 
 class dataset_obj(torch.utils.data.Dataset):
     def __init__(self, args, dataset):
@@ -247,7 +290,11 @@ class dataset_obj(torch.utils.data.Dataset):
         S_list=[]
 
         for date in (AdmitDate + datetime.timedelta(n) for n in range(seqlen)):
-            A_mat, key = create_adj_mat(self.loc_df, date, aid)
+            if self.args['tempjob'] == 'unique_neighbors_adj_mat':
+                A_mat, key = create_adj_mat_v2(self.loc_df, date, aid, AdmitDate)
+            else:
+                A_mat, key = create_adj_mat(self.loc_df, date, aid)
+            
             if self.args['use_cuda']:
                 A_list.append(torch.FloatTensor(A_mat).cuda())
                 S_list.append(torch.FloatTensor(create_signal_mat(self.args, self.cdi_df, date, key)).cuda())

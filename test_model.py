@@ -342,7 +342,8 @@ class gcn_lstm(nn.Module):
         super(gcn_lstm, self).__init__()
         
         self.args = args.copy()
-        self.gc1 = GraphConvolution(2*args['sig_T']+1,args['hidden_size_gcn'])
+#         self.gc1 = GraphConvolution(2*args['sig_T']+1,args['hidden_size_gcn'])
+        self.gc1 = GraphConvolution(1,args['hidden_size_gcn'])
         self.gc2 = GraphConvolution(args['hidden_size_gcn'], args['embedding_size'])
         self.args['d'] = self.args['d'] + self.args['embedding_size']
         self.lstm = pytorchLSTM(self.args)
@@ -370,7 +371,8 @@ class simple_gcn_lstm(nn.Module):
         super(simple_gcn_lstm, self).__init__()
         
         self.args = args.copy()
-        self.gc1 = GraphConvolution(2*args['sig_T']+1,args['hidden_size_gcn'])
+#         self.gc1 = GraphConvolution(2*args['sig_T']+1,args['hidden_size_gcn'])
+        self.gc1 = GraphConvolution(1,args['hidden_size_gcn'])
         self.gc2 = GraphConvolution(args['hidden_size_gcn'], args['embedding_size'])
         self.args['d'] = self.args['embedding_size']
         self.lstm = pytorchLSTM(self.args)

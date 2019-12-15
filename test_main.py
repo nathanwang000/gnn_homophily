@@ -38,7 +38,7 @@ parser.add_argument('--data_loc',type=str,default='/data4/jeeheh/ShadowPeriod/Da
 parser.add_argument('--locdata_loc',type=str,default='/data4/jeeheh/ShadowPeriod/Toy/Toy_locations.csv')
 parser.add_argument('--auxdata_loc',type=str,default='/data4/jeeheh/ShadowPeriod/Toy/Toy_CDI.csv')
 # parser.add_argument('--INSTANCE_KEYS',nargs='+',type=str,default=['season_title_id', 'country_iso_code', 'days_since_launch'])
-parser.add_argument('--sig-T',type=int,default=14)
+# parser.add_argument('--sig_T',type=int,default=14)
 
 # #Phantom Step: Adds in t=-91 for PostGL
 # parser.add_argument('--phantom_step', dest='phantom_step', action='store_true')
@@ -72,7 +72,7 @@ if args['use_cuda']:
 if args['task'] == 'cdi': 
     args['classification'] = True
     args['num_classes'] = 2
-elif args['task'] == 'neighbors':
+elif args['task'] in ['neighbors','unique_neighbors']:
     args['classification'] = False
     args['num_classes'] = 1
 elif args['task'] == 'neighbor_deciles':
